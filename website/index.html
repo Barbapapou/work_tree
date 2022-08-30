@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta charset="utf-8">
+    <title>Work Tree</title>
+</head>
+<body>
+<script type="module">
+    import init, {greet} from "../pkg/work_tree.js";
+    init()
+        .then(() => {
+            greet("WebAssembly")
+        });
+</script>
+</body>
+</html>
