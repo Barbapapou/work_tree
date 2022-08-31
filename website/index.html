@@ -5,12 +5,12 @@
     <title>Work Tree</title>
 </head>
 <body>
+
+<canvas id="glCanvas" width="640" height="480"></canvas>
+
 <script type="module">
-    import init, {greet} from "../pkg/work_tree.js";
+    import init from "../pkg/work_tree.js";
     init()
-        .then(() => {
-            greet("WebAssembly")
-        });
 </script>
 </body>
 </html>
