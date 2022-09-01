@@ -31,19 +31,8 @@ pub fn run() -> Result<(), JsValue> {
     gl.clear_color(0.0, 0.0, 0.0, 1.0);
     gl.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
 
-    let vertex_shader_source = "attribute vec4 aVertexPosition;
-
-        uniform mat4 uProjectionMatrix;
-        uniform mat4 uModelViewMatrix;
-
-        void main() {
-          gl_Position = aVertexPosition * uProjectionMatrix * uModelViewMatrix;
-        }";
-
-    let fragment_shader_source = "void main() {
-          gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
-        }";
-
+    let vertex_shader_source = include_str!("vs.glsl");
+    let fragment_shader_source = include_str!("fs.glsl");
     let shader_program = init_shader_program(&gl, vertex_shader_source, fragment_shader_source)
         .expect("failed to create shader program");
     let buffers = init_buffer(&gl);
@@ -87,7 +76,6 @@ fn draw_scene(gl: &WebGlRenderingContext, program_info: &WebGlProgram, buffers: 
     gl.enable_vertex_attrib_array(attrib_vertex_position);
 
     gl.use_program(Some(&program_info));
-    log("Salut!");
 
     gl.uniform_matrix4fv_with_f32_array(
         Some(
