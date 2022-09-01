@@ -3,6 +3,11 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{WebGlBuffer, WebGlProgram, WebGlRenderingContext, WebGlShader};
 
+struct VertexBufferObject {
+    position: WebGlBuffer,
+    color: WebGlBuffer,
+}
+
 #[wasm_bindgen]
 extern "C" {
     fn alert(s: &str);
@@ -30,20 +35,17 @@ pub fn run() -> Result<(), JsValue> {
         .dyn_into::<web_sys::WebGlRenderingContext>()
         .expect("failed to convert context into webgl context");
 
-    gl.clear_color(0.0, 0.0, 0.0, 1.0);
-    gl.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
-
     let vertex_shader_source = include_str!("vs.glsl");
     let fragment_shader_source = include_str!("fs.glsl");
     let shader_program = init_shader_program(&gl, vertex_shader_source, fragment_shader_source)
         .expect("failed to create shader program");
-    let buffers = init_buffer(&gl);
-    draw_scene(&gl, &shader_program, &buffers);
+    let vbo = init_buffer(&gl);
+    draw_scene(&gl, &shader_program, &vbo);
 
     Ok(())
 }
 
-fn draw_scene(gl: &WebGlRenderingContext, program_info: &WebGlProgram, buffers: &WebGlBuffer) {
+fn draw_scene(gl: &WebGlRenderingContext, program_info: &WebGlProgram, vbo: &VertexBufferObject) {
     gl.clear_color(0.0, 0.0, 0.0, 1.0);
     gl.clear_depth(1.0);
     gl.enable(WebGlRenderingContext::DEPTH_TEST);
@@ -58,17 +60,19 @@ fn draw_scene(gl: &WebGlRenderingContext, program_info: &WebGlProgram, buffers: 
     let projection_matrix = Matrix4::new_perspective(aspect, field_of_view, z_near, z_far);
     let model_view_matrix = Matrix4::new_translation(&Vector3::new(-0.0, 0.0, -6.0));
 
+    // Position
     let num_components = 2;
     let type_ = WebGlRenderingContext::FLOAT;
     let normalize = false;
     let stride = 0;
     let offset = 0;
 
+    // get the location of the aVertexPosition shader param
     let attrib_vertex_position = gl.get_attrib_location(&program_info, "aVertexPosition") as u32;
 
-    gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&buffers));
+    gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&vbo.position));
     gl.vertex_attrib_pointer_with_i32(
-        attrib_vertex_position, // get at a location named aVertexPosition
+        attrib_vertex_position,
         num_components,
         type_,
         normalize,
@@ -76,6 +80,26 @@ fn draw_scene(gl: &WebGlRenderingContext, program_info: &WebGlProgram, buffers: 
         offset,
     );
     gl.enable_vertex_attrib_array(attrib_vertex_position);
+
+    // Color
+    let num_components = 4;
+    let type_ = WebGlRenderingContext::FLOAT;
+    let normalize = false;
+    let stride = 0;
+    let offset = 0;
+
+    let attrib_vertex_color = gl.get_attrib_location(&program_info, "aVertexColor") as u32;
+
+    gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&vbo.color));
+    gl.vertex_attrib_pointer_with_i32(
+        attrib_vertex_color,
+        num_components,
+        type_,
+        normalize,
+        stride,
+        offset,
+    );
+    gl.enable_vertex_attrib_array(attrib_vertex_color);
 
     gl.use_program(Some(&program_info));
 
@@ -142,21 +166,48 @@ fn load_shader(gl: &WebGlRenderingContext, type_: u32, source: &str) -> Result<W
         gl.delete_shader(Some(&shader));
         return Err(());
     }
-
     Ok(shader)
 }
 
-fn init_buffer(gl: &WebGlRenderingContext) -> WebGlBuffer {
+fn init_buffer(gl: &WebGlRenderingContext) -> VertexBufferObject {
     let position_buffer = gl.create_buffer().expect("failed to create buffer");
     gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&position_buffer));
-    let vertices = [1.0, 1.0, -1.0, 1.0, 1.0, -1.0, -1.0, -1.0];
+    #[rustfmt::skip]
+    let vertices = [
+        1.0 ,  1.0,
+        -1.0,  1.0,
+        1.0 , -1.0,
+        -1.0, -1.0
+    ];
     unsafe {
-        let js_positions = js_sys::Float32Array::view(&vertices);
+        let vertices = js_sys::Float32Array::view(&vertices);
         gl.buffer_data_with_array_buffer_view(
             WebGlRenderingContext::ARRAY_BUFFER,
-            &(js_positions),
+            &(vertices),
             WebGlRenderingContext::STATIC_DRAW,
         );
     }
-    position_buffer
+
+    let color_buffer = gl.create_buffer().expect("failed to create buffer");
+    gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&color_buffer));
+    #[rustfmt::skip]
+    let colors = [
+        1.0, 1.0, 1.0, 1.0,
+        1.0, 0.0, 0.0, 1.0,
+        0.0, 1.0, 0.0, 1.0,
+        0.0, 0.0, 1.0, 1.0,
+    ];
+    unsafe {
+        let colors = js_sys::Float32Array::view(&colors);
+        gl.buffer_data_with_array_buffer_view(
+            WebGlRenderingContext::ARRAY_BUFFER,
+            &(colors),
+            WebGlRenderingContext::STATIC_DRAW,
+        );
+    }
+
+    VertexBufferObject {
+        position: position_buffer,
+        color: color_buffer,
+    }
 }
