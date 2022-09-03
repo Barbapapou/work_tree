@@ -1,12 +1,10 @@
-use nalgebra::{Matrix4, Vector3};
+use gloo::render::{request_animation_frame, AnimationFrame};
+use nalgebra::{Matrix4, Unit, Vector3};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::{WebGlBuffer, WebGlProgram, WebGlRenderingContext, WebGlShader};
+use web_sys::{WebGlBuffer, WebGlProgram, WebGlRenderingContext, WebGlShader, Window};
 
-struct VertexBufferObject {
-    position: WebGlBuffer,
-    color: WebGlBuffer,
-}
+static mut RENDERER: Option<Renderer> = None;
 
 #[wasm_bindgen]
 extern "C" {
@@ -15,12 +13,27 @@ extern "C" {
     fn log(s: &str);
 }
 
-#[wasm_bindgen(start)]
-pub fn run() -> Result<(), JsValue> {
+struct Renderer {
+    gl: WebGlRenderingContext,
+    program: WebGlProgram,
+    vbo: VertexBufferObject,
+    animation_handler: AnimationFrame,
+    cube_rotation: f32,
+    last_update: i32,
+}
+
+struct VertexBufferObject {
+    position: WebGlBuffer,
+    color: WebGlBuffer,
+}
+
+#[wasm_bindgen]
+pub fn run() {
     console_error_panic_hook::set_once();
 
-    let window = web_sys::window().expect("no global `window` exists");
-    let document = window.document().expect("should have a document on window");
+    let document = window()
+        .document()
+        .expect("should have a document on window");
     let canvas = document
         .get_element_by_id("canvas")
         .expect("failed to get #canvas element");
@@ -40,18 +53,38 @@ pub fn run() -> Result<(), JsValue> {
     let shader_program = init_shader_program(&gl, vertex_shader_source, fragment_shader_source)
         .expect("failed to create shader program");
     let vbo = init_buffer(&gl);
-    draw_scene(&gl, &shader_program, &vbo);
 
-    Ok(())
+    unsafe {
+        RENDERER = Some(Renderer {
+            gl,
+            program: shader_program,
+            vbo,
+            animation_handler: request_animation_frame(update),
+            cube_rotation: 0.0,
+            last_update: 0,
+        })
+    }
 }
 
-fn draw_scene(gl: &WebGlRenderingContext, program_info: &WebGlProgram, vbo: &VertexBufferObject) {
-    gl.clear_color(0.0, 0.0, 0.0, 1.0);
-    gl.clear_depth(1.0);
-    gl.enable(WebGlRenderingContext::DEPTH_TEST);
-    gl.depth_func(WebGlRenderingContext::LEQUAL);
+fn update(timestamp: f64) {
+    let timestamp = timestamp as i32;
+    let renderer = unsafe { RENDERER.as_mut().unwrap() };
+    let delta_time = ((timestamp - renderer.last_update) as f32) * 0.001;
+    renderer.cube_rotation += delta_time;
+    renderer.last_update = timestamp;
+    draw_scene(&renderer);
+    renderer.animation_handler = request_animation_frame(update);
+}
 
-    gl.clear(WebGlRenderingContext::COLOR_BUFFER_BIT | WebGlRenderingContext::DEPTH_BUFFER_BIT);
+fn draw_scene(renderer: &Renderer) {
+    renderer.gl.clear_color(0.0, 0.0, 0.0, 1.0);
+    renderer.gl.clear_depth(1.0);
+    renderer.gl.enable(WebGlRenderingContext::DEPTH_TEST);
+    renderer.gl.depth_func(WebGlRenderingContext::LEQUAL);
+
+    renderer
+        .gl
+        .clear(WebGlRenderingContext::COLOR_BUFFER_BIT | WebGlRenderingContext::DEPTH_BUFFER_BIT);
 
     let aspect = 16.0 / 9.0;
     let field_of_view = 45.0 * std::f32::consts::PI / 180.0;
@@ -59,6 +92,11 @@ fn draw_scene(gl: &WebGlRenderingContext, program_info: &WebGlProgram, vbo: &Ver
     let z_far = 100.0;
     let projection_matrix = Matrix4::new_perspective(aspect, field_of_view, z_near, z_far);
     let model_view_matrix = Matrix4::new_translation(&Vector3::new(-0.0, 0.0, -6.0));
+    let model_view_matrix = model_view_matrix
+        * Matrix4::from_axis_angle(
+            Unit::from_ref_unchecked(&Vector3::new(0.0, 0.0, 1.0)),
+            renderer.cube_rotation,
+        );
 
     // Position
     let num_components = 2;
@@ -68,10 +106,16 @@ fn draw_scene(gl: &WebGlRenderingContext, program_info: &WebGlProgram, vbo: &Ver
     let offset = 0;
 
     // get the location of the aVertexPosition shader param
-    let attrib_vertex_position = gl.get_attrib_location(&program_info, "aVertexPosition") as u32;
+    let attrib_vertex_position = renderer
+        .gl
+        .get_attrib_location(&renderer.program, "aVertexPosition")
+        as u32;
 
-    gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&vbo.position));
-    gl.vertex_attrib_pointer_with_i32(
+    renderer.gl.bind_buffer(
+        WebGlRenderingContext::ARRAY_BUFFER,
+        Some(&renderer.vbo.position),
+    );
+    renderer.gl.vertex_attrib_pointer_with_i32(
         attrib_vertex_position,
         num_components,
         type_,
@@ -79,7 +123,9 @@ fn draw_scene(gl: &WebGlRenderingContext, program_info: &WebGlProgram, vbo: &Ver
         stride,
         offset,
     );
-    gl.enable_vertex_attrib_array(attrib_vertex_position);
+    renderer
+        .gl
+        .enable_vertex_attrib_array(attrib_vertex_position);
 
     // Color
     let num_components = 4;
@@ -88,10 +134,16 @@ fn draw_scene(gl: &WebGlRenderingContext, program_info: &WebGlProgram, vbo: &Ver
     let stride = 0;
     let offset = 0;
 
-    let attrib_vertex_color = gl.get_attrib_location(&program_info, "aVertexColor") as u32;
+    let attrib_vertex_color = renderer
+        .gl
+        .get_attrib_location(&renderer.program, "aVertexColor")
+        as u32;
 
-    gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&vbo.color));
-    gl.vertex_attrib_pointer_with_i32(
+    renderer.gl.bind_buffer(
+        WebGlRenderingContext::ARRAY_BUFFER,
+        Some(&renderer.vbo.color),
+    );
+    renderer.gl.vertex_attrib_pointer_with_i32(
         attrib_vertex_color,
         num_components,
         type_,
@@ -99,22 +151,26 @@ fn draw_scene(gl: &WebGlRenderingContext, program_info: &WebGlProgram, vbo: &Ver
         stride,
         offset,
     );
-    gl.enable_vertex_attrib_array(attrib_vertex_color);
+    renderer.gl.enable_vertex_attrib_array(attrib_vertex_color);
 
-    gl.use_program(Some(&program_info));
+    renderer.gl.use_program(Some(&renderer.program));
 
-    gl.uniform_matrix4fv_with_f32_array(
+    renderer.gl.uniform_matrix4fv_with_f32_array(
         Some(
-            &gl.get_uniform_location(&program_info, "uProjectionMatrix")
+            &renderer
+                .gl
+                .get_uniform_location(&renderer.program, "uProjectionMatrix")
                 .expect("can't get projection matrix location"),
         ),
         false,
         projection_matrix.as_slice(),
     );
 
-    gl.uniform_matrix4fv_with_f32_array(
+    renderer.gl.uniform_matrix4fv_with_f32_array(
         Some(
-            &gl.get_uniform_location(&program_info, "uModelViewMatrix")
+            &renderer
+                .gl
+                .get_uniform_location(&renderer.program, "uModelViewMatrix")
                 .expect("can't get model view matrix location"),
         ),
         false,
@@ -123,7 +179,9 @@ fn draw_scene(gl: &WebGlRenderingContext, program_info: &WebGlProgram, vbo: &Ver
 
     let offset = 0;
     let vertex_count = 4;
-    gl.draw_arrays(WebGlRenderingContext::TRIANGLE_STRIP, offset, vertex_count);
+    renderer
+        .gl
+        .draw_arrays(WebGlRenderingContext::TRIANGLE_STRIP, offset, vertex_count);
 }
 
 fn init_shader_program(
@@ -210,4 +268,8 @@ fn init_buffer(gl: &WebGlRenderingContext) -> VertexBufferObject {
         position: position_buffer,
         color: color_buffer,
     }
+}
+
+fn window() -> Window {
+    web_sys::window().expect("no global `window` exists")
 }

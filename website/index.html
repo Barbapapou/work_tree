@@ -9,8 +9,11 @@
 <canvas id="canvas" width="1280" height="720"></canvas>
 
 <script type="module">
-    import init from "../pkg/work_tree.js";
+    import init, {run} from "../pkg/work_tree.js";
     init()
+        .then(() => {
+            run()
+        });
 </script>
 </body>
 </html>
