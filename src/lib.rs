@@ -25,6 +25,7 @@ struct Renderer {
 struct VertexBufferObject {
     position: WebGlBuffer,
     color: WebGlBuffer,
+    indices: WebGlBuffer,
 }
 
 #[wasm_bindgen]
@@ -96,10 +97,18 @@ fn draw_scene(renderer: &Renderer) {
         * Matrix4::from_axis_angle(
             Unit::from_ref_unchecked(&Vector3::new(0.0, 0.0, 1.0)),
             renderer.cube_rotation,
+        )
+        * Matrix4::from_axis_angle(
+            Unit::from_ref_unchecked(&Vector3::new(0.0, 1.0, 0.0)),
+            renderer.cube_rotation * 0.7,
+        )
+        * Matrix4::from_axis_angle(
+            Unit::from_ref_unchecked(&Vector3::new(1.0, 0.0, 0.0)),
+            renderer.cube_rotation * 0.4,
         );
 
     // Position
-    let num_components = 2;
+    let num_components = 3;
     let type_ = WebGlRenderingContext::FLOAT;
     let normalize = false;
     let stride = 0;
@@ -153,6 +162,11 @@ fn draw_scene(renderer: &Renderer) {
     );
     renderer.gl.enable_vertex_attrib_array(attrib_vertex_color);
 
+    renderer.gl.bind_buffer(
+        WebGlRenderingContext::ELEMENT_ARRAY_BUFFER,
+        Some(&renderer.vbo.indices),
+    );
+
     renderer.gl.use_program(Some(&renderer.program));
 
     renderer.gl.uniform_matrix4fv_with_f32_array(
@@ -178,10 +192,14 @@ fn draw_scene(renderer: &Renderer) {
     );
 
     let offset = 0;
-    let vertex_count = 4;
-    renderer
-        .gl
-        .draw_arrays(WebGlRenderingContext::TRIANGLE_STRIP, offset, vertex_count);
+    let vertex_count = 36;
+    let type_ = WebGlRenderingContext::UNSIGNED_SHORT;
+    renderer.gl.draw_elements_with_i32(
+        WebGlRenderingContext::TRIANGLES,
+        vertex_count,
+        type_,
+        offset,
+    );
 }
 
 fn init_shader_program(
@@ -232,10 +250,41 @@ fn init_buffer(gl: &WebGlRenderingContext) -> VertexBufferObject {
     gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&position_buffer));
     #[rustfmt::skip]
     let vertices = [
-        1.0 ,  1.0,
-        -1.0,  1.0,
-        1.0 , -1.0,
-        -1.0, -1.0
+        // Front face
+        -1.0, -1.0,  1.0,
+        1.0, -1.0,  1.0,
+        1.0,  1.0,  1.0,
+        -1.0,  1.0,  1.0,
+
+        // Back face
+        -1.0, -1.0, -1.0,
+        -1.0,  1.0, -1.0,
+        1.0,  1.0, -1.0,
+        1.0, -1.0, -1.0,
+
+        // Top face
+        -1.0,  1.0, -1.0,
+        -1.0,  1.0,  1.0,
+        1.0,  1.0,  1.0,
+        1.0,  1.0, -1.0,
+
+        // Bottom face
+        -1.0, -1.0, -1.0,
+        1.0, -1.0, -1.0,
+        1.0, -1.0,  1.0,
+        -1.0, -1.0,  1.0,
+
+        // Right face
+        1.0, -1.0, -1.0,
+        1.0,  1.0, -1.0,
+        1.0,  1.0,  1.0,
+        1.0, -1.0,  1.0,
+
+        // Left face
+        -1.0, -1.0, -1.0,
+        -1.0, -1.0,  1.0,
+        -1.0,  1.0,  1.0,
+        -1.0,  1.0, -1.0,
     ];
     unsafe {
         let vertices = js_sys::Float32Array::view(&vertices);
@@ -250,10 +299,30 @@ fn init_buffer(gl: &WebGlRenderingContext) -> VertexBufferObject {
     gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&color_buffer));
     #[rustfmt::skip]
     let colors = [
-        1.0, 1.0, 1.0, 1.0,
-        1.0, 0.0, 0.0, 1.0,
-        0.0, 1.0, 0.0, 1.0,
-        0.0, 0.0, 1.0, 1.0,
+        1.0,  1.0,  1.0,  1.0,    // Front face: white
+        1.0,  1.0,  1.0,  1.0,    // Front face: white
+        1.0,  1.0,  1.0,  1.0,    // Front face: white
+        1.0,  1.0,  1.0,  1.0,    // Front face: white
+        1.0,  0.0,  0.0,  1.0,    // Back face: red
+        1.0,  0.0,  0.0,  1.0,    // Back face: red
+        1.0,  0.0,  0.0,  1.0,    // Back face: red
+        1.0,  0.0,  0.0,  1.0,    // Back face: red
+        0.0,  1.0,  0.0,  1.0,    // Top face: green
+        0.0,  1.0,  0.0,  1.0,    // Top face: green
+        0.0,  1.0,  0.0,  1.0,    // Top face: green
+        0.0,  1.0,  0.0,  1.0,    // Top face: green
+        0.0,  0.0,  1.0,  1.0,    // Bottom face: blue
+        0.0,  0.0,  1.0,  1.0,    // Bottom face: blue
+        0.0,  0.0,  1.0,  1.0,    // Bottom face: blue
+        0.0,  0.0,  1.0,  1.0,    // Bottom face: blue
+        1.0,  1.0,  0.0,  1.0,    // Right face: yellow
+        1.0,  1.0,  0.0,  1.0,    // Right face: yellow
+        1.0,  1.0,  0.0,  1.0,    // Right face: yellow
+        1.0,  1.0,  0.0,  1.0,    // Right face: yellow
+        1.0,  0.0,  1.0,  1.0,    // Left face: purple
+        1.0,  0.0,  1.0,  1.0,    // Left face: purple
+        1.0,  0.0,  1.0,  1.0,    // Left face: purple
+        1.0,  0.0,  1.0,  1.0,    // Left face: purple
     ];
     unsafe {
         let colors = js_sys::Float32Array::view(&colors);
@@ -264,9 +333,33 @@ fn init_buffer(gl: &WebGlRenderingContext) -> VertexBufferObject {
         );
     }
 
+    let index_buffer = gl.create_buffer().expect("failed to create buffer");
+    gl.bind_buffer(
+        WebGlRenderingContext::ELEMENT_ARRAY_BUFFER,
+        Some(&index_buffer),
+    );
+    #[rustfmt::skip]
+    let indices = [
+        0,  1,  2,      0,  2,  3,    // front
+        4,  5,  6,      4,  6,  7,    // back
+        8,  9,  10,     8,  10, 11,   // top
+        12, 13, 14,     12, 14, 15,   // bottom
+        16, 17, 18,     16, 18, 19,   // right
+        20, 21, 22,     20, 22, 23,   // left
+    ];
+    unsafe {
+        let indices = js_sys::Uint16Array::view(&indices);
+        gl.buffer_data_with_array_buffer_view(
+            WebGlRenderingContext::ELEMENT_ARRAY_BUFFER,
+            &(indices),
+            WebGlRenderingContext::STATIC_DRAW,
+        );
+    }
+
     VertexBufferObject {
         position: position_buffer,
         color: color_buffer,
+        indices: index_buffer,
     }
 }
 
