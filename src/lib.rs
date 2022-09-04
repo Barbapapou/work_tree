@@ -29,6 +29,7 @@ struct Renderer {
 struct VertexBufferObject {
     position: WebGlBuffer,
     uv: WebGlBuffer,
+    normal: WebGlBuffer,
     indices: WebGlBuffer,
 }
 
@@ -85,14 +86,13 @@ fn update(timestamp: f64) {
 }
 
 fn draw_scene(renderer: &Renderer) {
-    renderer.gl.clear_color(0.0, 0.0, 0.0, 1.0);
-    renderer.gl.clear_depth(1.0);
-    renderer.gl.enable(WebGlRenderingContext::DEPTH_TEST);
-    renderer.gl.depth_func(WebGlRenderingContext::LEQUAL);
+    let gl = &renderer.gl;
+    gl.clear_color(0.0, 0.0, 0.0, 1.0);
+    gl.clear_depth(1.0);
+    gl.enable(WebGlRenderingContext::DEPTH_TEST);
+    gl.depth_func(WebGlRenderingContext::LEQUAL);
 
-    renderer
-        .gl
-        .clear(WebGlRenderingContext::COLOR_BUFFER_BIT | WebGlRenderingContext::DEPTH_BUFFER_BIT);
+    gl.clear(WebGlRenderingContext::COLOR_BUFFER_BIT | WebGlRenderingContext::DEPTH_BUFFER_BIT);
 
     let aspect = 16.0 / 9.0;
     let field_of_view = 45.0 * std::f32::consts::PI / 180.0;
@@ -113,6 +113,10 @@ fn draw_scene(renderer: &Renderer) {
             Unit::from_ref_unchecked(&Vector3::new(1.0, 0.0, 0.0)),
             renderer.cube_rotation * 0.4,
         );
+    let normal_matrix = Matrix4::from(model_view_matrix)
+        .try_inverse()
+        .expect("failed to inverse model view matrix for normal matrix creation")
+        .transpose();
 
     // Position
     let num_components = 3;
@@ -122,16 +126,14 @@ fn draw_scene(renderer: &Renderer) {
     let offset = 0;
 
     // get the location of the aVertexPosition shader param
-    let attrib_vertex_position = renderer
-        .gl
-        .get_attrib_location(&renderer.program, "aVertexPosition")
-        as u32;
+    let attrib_vertex_position =
+        gl.get_attrib_location(&renderer.program, "aVertexPosition") as u32;
 
-    renderer.gl.bind_buffer(
+    gl.bind_buffer(
         WebGlRenderingContext::ARRAY_BUFFER,
         Some(&renderer.vbo.position),
     );
-    renderer.gl.vertex_attrib_pointer_with_i32(
+    gl.vertex_attrib_pointer_with_i32(
         attrib_vertex_position,
         num_components,
         type_,
@@ -139,9 +141,7 @@ fn draw_scene(renderer: &Renderer) {
         stride,
         offset,
     );
-    renderer
-        .gl
-        .enable_vertex_attrib_array(attrib_vertex_position);
+    gl.enable_vertex_attrib_array(attrib_vertex_position);
 
     // Uv
     let num_components = 2;
@@ -150,66 +150,79 @@ fn draw_scene(renderer: &Renderer) {
     let stride = 0;
     let offset = 0;
 
-    let attrib_uv = renderer
-        .gl
-        .get_attrib_location(&renderer.program, "aTextureCoord") as u32;
+    let attrib_uv = gl.get_attrib_location(&renderer.program, "aTextureCoord") as u32;
 
-    renderer
-        .gl
-        .bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&renderer.vbo.uv));
-    renderer.gl.vertex_attrib_pointer_with_i32(
-        attrib_uv,
+    gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&renderer.vbo.uv));
+    gl.vertex_attrib_pointer_with_i32(attrib_uv, num_components, type_, normalize, stride, offset);
+    gl.enable_vertex_attrib_array(attrib_uv);
+    // Normal
+    let num_components = 3;
+    let type_ = WebGlRenderingContext::FLOAT;
+    let normalize = false;
+    let stride = 0;
+    let offset = 0;
+
+    let attrib_normal = gl.get_attrib_location(&renderer.program, "aVertexNormal") as u32;
+
+    gl.bind_buffer(
+        WebGlRenderingContext::ARRAY_BUFFER,
+        Some(&renderer.vbo.normal),
+    );
+    gl.vertex_attrib_pointer_with_i32(
+        attrib_normal,
         num_components,
         type_,
         normalize,
         stride,
         offset,
     );
-    renderer.gl.enable_vertex_attrib_array(attrib_uv);
+    gl.enable_vertex_attrib_array(attrib_normal);
 
-    renderer.gl.bind_buffer(
+    gl.bind_buffer(
         WebGlRenderingContext::ELEMENT_ARRAY_BUFFER,
         Some(&renderer.vbo.indices),
     );
 
-    renderer.gl.use_program(Some(&renderer.program));
+    gl.use_program(Some(&renderer.program));
 
-    renderer.gl.uniform_matrix4fv_with_f32_array(
+    gl.uniform_matrix4fv_with_f32_array(
         Some(
-            &renderer
-                .gl
-                .get_uniform_location(&renderer.program, "uProjectionMatrix")
+            &gl.get_uniform_location(&renderer.program, "uProjectionMatrix")
                 .expect("can't get projection matrix location"),
         ),
         false,
         projection_matrix.as_slice(),
     );
 
-    renderer.gl.uniform_matrix4fv_with_f32_array(
+    gl.uniform_matrix4fv_with_f32_array(
         Some(
-            &renderer
-                .gl
-                .get_uniform_location(&renderer.program, "uModelViewMatrix")
+            &gl.get_uniform_location(&renderer.program, "uModelViewMatrix")
                 .expect("can't get model view matrix location"),
         ),
         false,
         model_view_matrix.as_slice(),
     );
 
-    renderer.gl.active_texture(WebGlRenderingContext::TEXTURE0);
-    renderer
-        .gl
-        .bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&renderer.texture));
-    let u_sampler_location = renderer
-        .gl
+    gl.uniform_matrix4fv_with_f32_array(
+        Some(
+            &gl.get_uniform_location(&renderer.program, "uNormalMatrix")
+                .expect("can't get normal matrix location"),
+        ),
+        false,
+        normal_matrix.as_slice(),
+    );
+
+    gl.active_texture(WebGlRenderingContext::TEXTURE0);
+    gl.bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&renderer.texture));
+    let u_sampler_location = gl
         .get_uniform_location(&renderer.program, "uSampler")
         .expect("can't get uSampler location");
-    renderer.gl.uniform1i(Some(&u_sampler_location), 0);
+    gl.uniform1i(Some(&u_sampler_location), 0);
 
     let offset = 0;
     let vertex_count = 36;
     let type_ = WebGlRenderingContext::UNSIGNED_SHORT;
-    renderer.gl.draw_elements_with_i32(
+    gl.draw_elements_with_i32(
         WebGlRenderingContext::TRIANGLES,
         vertex_count,
         type_,
@@ -264,42 +277,42 @@ fn init_buffer(gl: &WebGlRenderingContext) -> VertexBufferObject {
     let position_buffer = gl.create_buffer().expect("failed to create buffer");
     gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&position_buffer));
     #[rustfmt::skip]
-    let vertices = [
+        let vertices = [
         // Front face
-        -1.0, -1.0,  1.0,
-        1.0, -1.0,  1.0,
-        1.0,  1.0,  1.0,
-        -1.0,  1.0,  1.0,
+        -1.0, -1.0, 1.0,
+        1.0, -1.0, 1.0,
+        1.0, 1.0, 1.0,
+        -1.0, 1.0, 1.0,
 
         // Back face
         -1.0, -1.0, -1.0,
-        -1.0,  1.0, -1.0,
-        1.0,  1.0, -1.0,
+        -1.0, 1.0, -1.0,
+        1.0, 1.0, -1.0,
         1.0, -1.0, -1.0,
 
         // Top face
-        -1.0,  1.0, -1.0,
-        -1.0,  1.0,  1.0,
-        1.0,  1.0,  1.0,
-        1.0,  1.0, -1.0,
+        -1.0, 1.0, -1.0,
+        -1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0,
+        1.0, 1.0, -1.0,
 
         // Bottom face
         -1.0, -1.0, -1.0,
         1.0, -1.0, -1.0,
-        1.0, -1.0,  1.0,
-        -1.0, -1.0,  1.0,
+        1.0, -1.0, 1.0,
+        -1.0, -1.0, 1.0,
 
         // Right face
         1.0, -1.0, -1.0,
-        1.0,  1.0, -1.0,
-        1.0,  1.0,  1.0,
-        1.0, -1.0,  1.0,
+        1.0, 1.0, -1.0,
+        1.0, 1.0, 1.0,
+        1.0, -1.0, 1.0,
 
         // Left face
         -1.0, -1.0, -1.0,
-        -1.0, -1.0,  1.0,
-        -1.0,  1.0,  1.0,
-        -1.0,  1.0, -1.0,
+        -1.0, -1.0, 1.0,
+        -1.0, 1.0, 1.0,
+        -1.0, 1.0, -1.0,
     ];
     unsafe {
         let vertices = js_sys::Float32Array::view(&vertices);
@@ -313,37 +326,37 @@ fn init_buffer(gl: &WebGlRenderingContext) -> VertexBufferObject {
     let uv_buffer = gl.create_buffer().expect("failed to create buffer");
     gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&uv_buffer));
     #[rustfmt::skip]
-    let uvs = [
+        let uvs = [
         // Front
-        0.0,  0.0,
-        1.0,  0.0,
-        1.0,  1.0,
-        0.0,  1.0,
+        0.0, 0.0,
+        1.0, 0.0,
+        1.0, 1.0,
+        0.0, 1.0,
         // Back
-        0.0,  0.0,
-        1.0,  0.0,
-        1.0,  1.0,
-        0.0,  1.0,
+        0.0, 0.0,
+        1.0, 0.0,
+        1.0, 1.0,
+        0.0, 1.0,
         // Top
-        0.0,  0.0,
-        1.0,  0.0,
-        1.0,  1.0,
-        0.0,  1.0,
+        0.0, 0.0,
+        1.0, 0.0,
+        1.0, 1.0,
+        0.0, 1.0,
         // Bottom
-        0.0,  0.0,
-        1.0,  0.0,
-        1.0,  1.0,
-        0.0,  1.0,
+        0.0, 0.0,
+        1.0, 0.0,
+        1.0, 1.0,
+        0.0, 1.0,
         // Right
-        0.0,  0.0,
-        1.0,  0.0,
-        1.0,  1.0,
-        0.0,  1.0,
+        0.0, 0.0,
+        1.0, 0.0,
+        1.0, 1.0,
+        0.0, 1.0,
         // Left
-        0.0,  0.0,
-        1.0,  0.0,
-        1.0,  1.0,
-        0.0,  1.0,
+        0.0, 0.0,
+        1.0, 0.0,
+        1.0, 1.0,
+        0.0, 1.0,
     ];
     unsafe {
         let uvs = js_sys::Float32Array::view(&uvs);
@@ -354,19 +367,68 @@ fn init_buffer(gl: &WebGlRenderingContext) -> VertexBufferObject {
         );
     }
 
+    let normal_buffer = gl.create_buffer().expect("failed to create buffer");
+    gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&normal_buffer));
+    #[rustfmt::skip]
+        let normals = [
+        // Front
+        0.0, 0.0, 1.0,
+        0.0, 0.0, 1.0,
+        0.0, 0.0, 1.0,
+        0.0, 0.0, 1.0,
+
+        // Back
+        0.0, 0.0, -1.0,
+        0.0, 0.0, -1.0,
+        0.0, 0.0, -1.0,
+        0.0, 0.0, -1.0,
+
+        // Top
+        0.0, 1.0, 0.0,
+        0.0, 1.0, 0.0,
+        0.0, 1.0, 0.0,
+        0.0, 1.0, 0.0,
+
+        // Bottom
+        0.0, -1.0, 0.0,
+        0.0, -1.0, 0.0,
+        0.0, -1.0, 0.0,
+        0.0, -1.0, 0.0,
+
+        // Right
+        1.0, 0.0, 0.0,
+        1.0, 0.0, 0.0,
+        1.0, 0.0, 0.0,
+        1.0, 0.0, 0.0,
+
+        // Left
+        -1.0, 0.0, 0.0,
+        -1.0, 0.0, 0.0,
+        -1.0, 0.0, 0.0,
+        -1.0, 0.0, 0.0
+    ];
+    unsafe {
+        let normals = js_sys::Float32Array::view(&normals);
+        gl.buffer_data_with_array_buffer_view(
+            WebGlRenderingContext::ARRAY_BUFFER,
+            &(normals),
+            WebGlRenderingContext::STATIC_DRAW,
+        );
+    }
+
     let index_buffer = gl.create_buffer().expect("failed to create buffer");
     gl.bind_buffer(
         WebGlRenderingContext::ELEMENT_ARRAY_BUFFER,
         Some(&index_buffer),
     );
     #[rustfmt::skip]
-    let indices = [
-        0,  1,  2,      0,  2,  3,    // front
-        4,  5,  6,      4,  6,  7,    // back
-        8,  9,  10,     8,  10, 11,   // top
-        12, 13, 14,     12, 14, 15,   // bottom
-        16, 17, 18,     16, 18, 19,   // right
-        20, 21, 22,     20, 22, 23,   // left
+        let indices = [
+        0, 1, 2, 0, 2, 3,    // front
+        4, 5, 6, 4, 6, 7,    // back
+        8, 9, 10, 8, 10, 11,   // top
+        12, 13, 14, 12, 14, 15,   // bottom
+        16, 17, 18, 16, 18, 19,   // right
+        20, 21, 22, 20, 22, 23,   // left
     ];
     unsafe {
         let indices = js_sys::Uint16Array::view(&indices);
@@ -380,6 +442,7 @@ fn init_buffer(gl: &WebGlRenderingContext) -> VertexBufferObject {
     VertexBufferObject {
         position: position_buffer,
         uv: uv_buffer,
+        normal: normal_buffer,
         indices: index_buffer,
     }
 }
