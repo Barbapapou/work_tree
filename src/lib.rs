@@ -58,7 +58,7 @@ pub fn run() {
     let shader_program = init_shader_program(&gl, vertex_shader_source, fragment_shader_source)
         .expect("failed to create shader program");
     let vbo = init_buffer(&gl);
-    let texture = load_texture(&gl, "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d5/Rust_programming_language_black_logo.svg/2048px-Rust_programming_language_black_logo.svg.png");
+    let texture = load_texture(&gl, "http://localhost:8000/texture/rust_logo.png");
     gl.pixel_storei(WebGlRenderingContext::UNPACK_FLIP_Y_WEBGL, 1); // todo check if 1 == true
 
     unsafe {
