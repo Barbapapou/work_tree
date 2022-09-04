@@ -25,11 +25,13 @@ features = [
     'Element',
     'ClientQueryOptions',
     'HtmlCanvasElement',
+    'HtmlImageElement',
     'WebGlBuffer',
     'WebGlVertexArrayObject',
     'WebGlRenderingContext',
     'WebGlProgram',
     'WebGlShader',
+    'WebGlTexture',
     'WebGlUniformLocation',
     'Window',
 ]

@@ -2,7 +2,10 @@ use gloo::render::{request_animation_frame, AnimationFrame};
 use nalgebra::{Matrix4, Unit, Vector3};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::{WebGlBuffer, WebGlProgram, WebGlRenderingContext, WebGlShader, Window};
+use web_sys::{
+    HtmlImageElement, WebGlBuffer, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlTexture,
+    Window,
+};
 
 static mut RENDERER: Option<Renderer> = None;
 
@@ -18,13 +21,14 @@ struct Renderer {
     program: WebGlProgram,
     vbo: VertexBufferObject,
     animation_handler: AnimationFrame,
+    texture: WebGlTexture,
     cube_rotation: f32,
     last_update: i32,
 }
 
 struct VertexBufferObject {
     position: WebGlBuffer,
-    color: WebGlBuffer,
+    uv: WebGlBuffer,
     indices: WebGlBuffer,
 }
 
@@ -54,6 +58,8 @@ pub fn run() {
     let shader_program = init_shader_program(&gl, vertex_shader_source, fragment_shader_source)
         .expect("failed to create shader program");
     let vbo = init_buffer(&gl);
+    let texture = load_texture(&gl, "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d5/Rust_programming_language_black_logo.svg/2048px-Rust_programming_language_black_logo.svg.png");
+    gl.pixel_storei(WebGlRenderingContext::UNPACK_FLIP_Y_WEBGL, 1); // todo check if 1 == true
 
     unsafe {
         RENDERER = Some(Renderer {
@@ -63,6 +69,7 @@ pub fn run() {
             animation_handler: request_animation_frame(update),
             cube_rotation: 0.0,
             last_update: 0,
+            texture,
         })
     }
 }
@@ -136,31 +143,29 @@ fn draw_scene(renderer: &Renderer) {
         .gl
         .enable_vertex_attrib_array(attrib_vertex_position);
 
-    // Color
-    let num_components = 4;
+    // Uv
+    let num_components = 2;
     let type_ = WebGlRenderingContext::FLOAT;
     let normalize = false;
     let stride = 0;
     let offset = 0;
 
-    let attrib_vertex_color = renderer
+    let attrib_uv = renderer
         .gl
-        .get_attrib_location(&renderer.program, "aVertexColor")
-        as u32;
+        .get_attrib_location(&renderer.program, "aTextureCoord") as u32;
 
-    renderer.gl.bind_buffer(
-        WebGlRenderingContext::ARRAY_BUFFER,
-        Some(&renderer.vbo.color),
-    );
+    renderer
+        .gl
+        .bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&renderer.vbo.uv));
     renderer.gl.vertex_attrib_pointer_with_i32(
-        attrib_vertex_color,
+        attrib_uv,
         num_components,
         type_,
         normalize,
         stride,
         offset,
     );
-    renderer.gl.enable_vertex_attrib_array(attrib_vertex_color);
+    renderer.gl.enable_vertex_attrib_array(attrib_uv);
 
     renderer.gl.bind_buffer(
         WebGlRenderingContext::ELEMENT_ARRAY_BUFFER,
@@ -190,6 +195,16 @@ fn draw_scene(renderer: &Renderer) {
         false,
         model_view_matrix.as_slice(),
     );
+
+    renderer.gl.active_texture(WebGlRenderingContext::TEXTURE0);
+    renderer
+        .gl
+        .bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&renderer.texture));
+    let u_sampler_location = renderer
+        .gl
+        .get_uniform_location(&renderer.program, "uSampler")
+        .expect("can't get uSampler location");
+    renderer.gl.uniform1i(Some(&u_sampler_location), 0);
 
     let offset = 0;
     let vertex_count = 36;
@@ -295,40 +310,46 @@ fn init_buffer(gl: &WebGlRenderingContext) -> VertexBufferObject {
         );
     }
 
-    let color_buffer = gl.create_buffer().expect("failed to create buffer");
-    gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&color_buffer));
+    let uv_buffer = gl.create_buffer().expect("failed to create buffer");
+    gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&uv_buffer));
     #[rustfmt::skip]
-    let colors = [
-        1.0,  1.0,  1.0,  1.0,    // Front face: white
-        1.0,  1.0,  1.0,  1.0,    // Front face: white
-        1.0,  1.0,  1.0,  1.0,    // Front face: white
-        1.0,  1.0,  1.0,  1.0,    // Front face: white
-        1.0,  0.0,  0.0,  1.0,    // Back face: red
-        1.0,  0.0,  0.0,  1.0,    // Back face: red
-        1.0,  0.0,  0.0,  1.0,    // Back face: red
-        1.0,  0.0,  0.0,  1.0,    // Back face: red
-        0.0,  1.0,  0.0,  1.0,    // Top face: green
-        0.0,  1.0,  0.0,  1.0,    // Top face: green
-        0.0,  1.0,  0.0,  1.0,    // Top face: green
-        0.0,  1.0,  0.0,  1.0,    // Top face: green
-        0.0,  0.0,  1.0,  1.0,    // Bottom face: blue
-        0.0,  0.0,  1.0,  1.0,    // Bottom face: blue
-        0.0,  0.0,  1.0,  1.0,    // Bottom face: blue
-        0.0,  0.0,  1.0,  1.0,    // Bottom face: blue
-        1.0,  1.0,  0.0,  1.0,    // Right face: yellow
-        1.0,  1.0,  0.0,  1.0,    // Right face: yellow
-        1.0,  1.0,  0.0,  1.0,    // Right face: yellow
-        1.0,  1.0,  0.0,  1.0,    // Right face: yellow
-        1.0,  0.0,  1.0,  1.0,    // Left face: purple
-        1.0,  0.0,  1.0,  1.0,    // Left face: purple
-        1.0,  0.0,  1.0,  1.0,    // Left face: purple
-        1.0,  0.0,  1.0,  1.0,    // Left face: purple
+    let uvs = [
+        // Front
+        0.0,  0.0,
+        1.0,  0.0,
+        1.0,  1.0,
+        0.0,  1.0,
+        // Back
+        0.0,  0.0,
+        1.0,  0.0,
+        1.0,  1.0,
+        0.0,  1.0,
+        // Top
+        0.0,  0.0,
+        1.0,  0.0,
+        1.0,  1.0,
+        0.0,  1.0,
+        // Bottom
+        0.0,  0.0,
+        1.0,  0.0,
+        1.0,  1.0,
+        0.0,  1.0,
+        // Right
+        0.0,  0.0,
+        1.0,  0.0,
+        1.0,  1.0,
+        0.0,  1.0,
+        // Left
+        0.0,  0.0,
+        1.0,  0.0,
+        1.0,  1.0,
+        0.0,  1.0,
     ];
     unsafe {
-        let colors = js_sys::Float32Array::view(&colors);
+        let uvs = js_sys::Float32Array::view(&uvs);
         gl.buffer_data_with_array_buffer_view(
             WebGlRenderingContext::ARRAY_BUFFER,
-            &(colors),
+            &(uvs),
             WebGlRenderingContext::STATIC_DRAW,
         );
     }
@@ -358,9 +379,87 @@ fn init_buffer(gl: &WebGlRenderingContext) -> VertexBufferObject {
 
     VertexBufferObject {
         position: position_buffer,
-        color: color_buffer,
+        uv: uv_buffer,
         indices: index_buffer,
     }
+}
+
+fn load_texture(gl: &WebGlRenderingContext, path: &str) -> WebGlTexture {
+    let texture = gl.create_texture().expect("failed to create texture");
+    gl.bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&texture));
+
+    let level = 0;
+    let internal_format = WebGlRenderingContext::RGBA;
+    let width = 1;
+    let height = 1;
+    let border = 0;
+    let source_format = WebGlRenderingContext::RGBA;
+    let source_type = WebGlRenderingContext::UNSIGNED_BYTE;
+    let pixel = [255, 0, 255, 255];
+    gl.tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_u8_array(
+        WebGlRenderingContext::TEXTURE_2D,
+        level,
+        internal_format as i32,
+        width,
+        height,
+        border,
+        source_format,
+        source_type,
+        Some(&pixel),
+    )
+    .expect("failed to copy dummy texture data");
+
+    let image = HtmlImageElement::new().expect("failed to create new image");
+
+    let callback = Closure::<dyn Fn()>::new({
+        let gl = gl.clone();
+        let texture = texture.clone();
+        let image = image.clone();
+        move || {
+            gl.bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&texture));
+            gl.tex_image_2d_with_u32_and_u32_and_image(
+                WebGlRenderingContext::TEXTURE_2D,
+                0,
+                WebGlRenderingContext::RGBA as i32,
+                WebGlRenderingContext::RGBA,
+                WebGlRenderingContext::UNSIGNED_BYTE,
+                &image,
+            )
+            .expect("failed to load image texture");
+
+            if is_power_of_2(image.width()) && is_power_of_2(image.height()) {
+                gl.generate_mipmap(WebGlRenderingContext::TEXTURE_2D);
+            } else {
+                gl.tex_parameteri(
+                    WebGlRenderingContext::TEXTURE_2D,
+                    WebGlRenderingContext::TEXTURE_MIN_FILTER,
+                    WebGlRenderingContext::LINEAR as i32,
+                );
+                gl.tex_parameteri(
+                    WebGlRenderingContext::TEXTURE_2D,
+                    WebGlRenderingContext::TEXTURE_WRAP_S,
+                    WebGlRenderingContext::CLAMP_TO_EDGE as i32,
+                );
+                gl.tex_parameteri(
+                    WebGlRenderingContext::TEXTURE_2D,
+                    WebGlRenderingContext::TEXTURE_WRAP_T,
+                    WebGlRenderingContext::CLAMP_TO_EDGE as i32,
+                );
+            }
+        }
+    });
+
+    image.set_onload(Some(&callback.as_ref().unchecked_ref()));
+    image.set_cross_origin(Some("anonymous"));
+    image.set_src(path);
+
+    callback.forget();
+
+    texture
+}
+
+fn is_power_of_2(value: u32) -> bool {
+    return value & (value - 1) == 0;
 }
 
 fn window() -> Window {
