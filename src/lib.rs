@@ -81,7 +81,7 @@ fn update(timestamp: f64) {
     let delta_time = ((timestamp - renderer.last_update) as f32) * 0.001;
     renderer.cube_rotation += delta_time;
     renderer.last_update = timestamp;
-    draw_scene(&renderer);
+    draw_scene(renderer);
     renderer.animation_handler = request_animation_frame(update);
 }
 
@@ -113,7 +113,7 @@ fn draw_scene(renderer: &Renderer) {
             Unit::from_ref_unchecked(&Vector3::new(1.0, 0.0, 0.0)),
             renderer.cube_rotation * 0.4,
         );
-    let normal_matrix = Matrix4::from(model_view_matrix)
+    let normal_matrix = model_view_matrix
         .try_inverse()
         .expect("failed to inverse model view matrix for normal matrix creation")
         .transpose();
@@ -235,9 +235,9 @@ fn init_shader_program(
     vss: &str,
     fss: &str,
 ) -> Result<WebGlProgram, ()> {
-    let vertex_shader = load_shader(&gl, WebGlRenderingContext::VERTEX_SHADER, vss)
+    let vertex_shader = load_shader(gl, WebGlRenderingContext::VERTEX_SHADER, vss)
         .expect("failed to load vertex shader");
-    let fragment_shader = load_shader(&gl, WebGlRenderingContext::FRAGMENT_SHADER, fss)
+    let fragment_shader = load_shader(gl, WebGlRenderingContext::FRAGMENT_SHADER, fss)
         .expect("failed to load fragment shader");
 
     let shader_program = gl
@@ -248,10 +248,10 @@ fn init_shader_program(
     gl.link_program(&shader_program);
 
     if !gl.get_program_parameter(&shader_program, WebGlRenderingContext::LINK_STATUS) {
-        let info_log = gl
+        let _info_log = gl
             .get_program_info_log(&shader_program)
             .expect("can't retrieve information log");
-        alert(format!("an error occurred linking the shaders: {info_log}").as_str());
+        alert(format!("an error occurred linking the shaders: {_info_log}").as_str());
         return Err(());
     }
 
@@ -263,10 +263,10 @@ fn load_shader(gl: &WebGlRenderingContext, type_: u32, source: &str) -> Result<W
     gl.shader_source(&shader, source);
     gl.compile_shader(&shader);
     if !gl.get_shader_parameter(&shader, WebGlRenderingContext::COMPILE_STATUS) {
-        let info_log = gl
+        let _info_log = gl
             .get_shader_info_log(&shader)
             .expect("can't retrieve information log");
-        alert(format!("an error occurred compiling the shaders: {info_log}").as_str());
+        alert(format!("an error occurred compiling the shaders: {_info_log}").as_str());
         gl.delete_shader(Some(&shader));
         return Err(());
     }
@@ -512,7 +512,7 @@ fn load_texture(gl: &WebGlRenderingContext, path: &str) -> WebGlTexture {
         }
     });
 
-    image.set_onload(Some(&callback.as_ref().unchecked_ref()));
+    image.set_onload(Some(callback.as_ref().unchecked_ref()));
     image.set_cross_origin(Some("anonymous"));
     image.set_src(path);
 
@@ -522,7 +522,7 @@ fn load_texture(gl: &WebGlRenderingContext, path: &str) -> WebGlTexture {
 }
 
 fn is_power_of_2(value: u32) -> bool {
-    return value & (value - 1) == 0;
+    value & (value - 1) == 0
 }
 
 fn window() -> Window {
