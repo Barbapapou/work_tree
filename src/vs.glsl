@@ -5,12 +5,13 @@ attribute vec2 aTextureCoord;
 uniform mat4 uNormalMatrix;
 uniform mat4 uModelViewMatrix;
 uniform mat4 uProjectionMatrix;
+uniform mat4 uTransformationMatrix;
 
 varying highp vec2 vTextureCoord;
 varying highp vec3 vLighting;
 
 void main(void) {
-    gl_Position = uProjectionMatrix * uModelViewMatrix * aVertexPosition;
+    gl_Position =  uProjectionMatrix * uModelViewMatrix * uTransformationMatrix * aVertexPosition;
     vTextureCoord = aTextureCoord;
 
     // Apply lighting effect
