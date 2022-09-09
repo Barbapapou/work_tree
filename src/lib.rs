@@ -9,7 +9,8 @@ use nalgebra::{Matrix4, Vector3};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{
-    HtmlImageElement, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlTexture, Window,
+    Document, HtmlCanvasElement, HtmlImageElement, WebGlProgram, WebGlRenderingContext,
+    WebGlShader, WebGlTexture, Window,
 };
 
 static mut RENDERER: Option<Renderer> = None;
@@ -27,23 +28,18 @@ struct Renderer {
     animation_handler: AnimationFrame,
     texture: WebGlTexture,
     last_update: i32,
+    display_width: i32,
+    display_height: i32,
     entities: Vec<Entity>,
+    sample_delta: Vec<f32>,
 }
 
 #[wasm_bindgen]
 pub fn run() {
     console_error_panic_hook::set_once();
 
-    let document = window()
-        .document()
-        .expect("should have a document on window");
-    let canvas = document
-        .get_element_by_id("canvas")
-        .expect("failed to get #canvas element");
-    let canvas: web_sys::HtmlCanvasElement = canvas
-        .dyn_into::<web_sys::HtmlCanvasElement>()
-        .map_err(|_| ())
-        .expect("failed to get html canvas element");
+    let canvas = canvas();
+
     let gl = canvas
         .get_context("webgl")
         .expect("unable to initialize WebGL, your browser or machine may not support it.")
@@ -57,8 +53,13 @@ pub fn run() {
         .expect("failed to create shader program");
 
     let texture = load_texture(&gl, "http://localhost:8000/texture/rust_logo.png");
-    gl.pixel_storei(WebGlRenderingContext::UNPACK_FLIP_Y_WEBGL, 1);
+
+    gl.clear_color(0.0, 0.0, 0.0, 1.0);
+    gl.clear_depth(1.0);
+    gl.enable(WebGlRenderingContext::DEPTH_TEST);
+    gl.depth_func(WebGlRenderingContext::LEQUAL);
     gl.enable(WebGlRenderingContext::CULL_FACE);
+    gl.pixel_storei(WebGlRenderingContext::UNPACK_FLIP_Y_WEBGL, 1);
 
     let mut entities: Vec<Entity> = Vec::new();
     let factor = 3.464_101_6;
@@ -79,8 +80,11 @@ pub fn run() {
             program: shader_program,
             animation_handler: request_animation_frame(update),
             last_update: 0,
+            display_width: canvas.client_width(),
+            display_height: canvas.client_height(),
             texture,
             entities,
+            sample_delta: Vec::new(),
         })
     }
 }
@@ -89,27 +93,44 @@ fn update(timestamp: f64) {
     let timestamp = timestamp as i32;
     let mut renderer = unsafe { RENDERER.as_mut().unwrap() };
     let delta_time = ((timestamp - renderer.last_update) as f32) * 0.001;
+    renderer.last_update = timestamp;
+
+    renderer.sample_delta.push(delta_time);
+    if renderer.sample_delta.len() >= 10 {
+        renderer.sample_delta.remove(0);
+    }
+    let avg_tps: f32 = renderer.sample_delta.iter().sum();
+    let avg_tps = avg_tps / renderer.sample_delta.len() as f32;
+    document()
+        .get_element_by_id("tps")
+        .unwrap()
+        .set_text_content(Some(format!("{:.1}", avg_tps * 1000.0).as_str()));
+
     for entity in &mut renderer.entities {
         let x_pos = entity.position.x;
         let x = entity.rotation.x;
         let y = entity.rotation.x;
         entity.rotation = Vector3::new(x + delta_time + x_pos * 0.001, y + delta_time, 0.0);
     }
-    renderer.last_update = timestamp;
+
+    let canvas = canvas();
+    renderer.display_width = canvas.client_width();
+    renderer.display_height = canvas.client_height();
+    // set draw buffer size to display size
+    canvas.set_width(renderer.display_width as u32);
+    canvas.set_height(renderer.display_height as u32);
+
     draw_scene(renderer);
+
     renderer.animation_handler = request_animation_frame(update);
 }
 
 fn draw_scene(renderer: &Renderer) {
     let gl = &renderer.gl;
-    gl.clear_color(0.0, 0.0, 0.0, 1.0);
-    gl.clear_depth(1.0);
-    gl.enable(WebGlRenderingContext::DEPTH_TEST);
-    gl.depth_func(WebGlRenderingContext::LEQUAL);
-
+    gl.viewport(0, 0, canvas().width() as i32, canvas().height() as i32);
     gl.clear(WebGlRenderingContext::COLOR_BUFFER_BIT | WebGlRenderingContext::DEPTH_BUFFER_BIT);
 
-    let aspect = 16.0 / 9.0;
+    let aspect = renderer.display_width as f32 / renderer.display_height as f32;
     let field_of_view = 45.0 * std::f32::consts::PI / 180.0;
     let z_near = 0.1;
     let z_far = 100.0;
@@ -271,4 +292,19 @@ fn is_power_of_2(value: u32) -> bool {
 
 fn window() -> Window {
     web_sys::window().expect("no global `window` exists")
+}
+
+fn document() -> Document {
+    window()
+        .document()
+        .expect("should have a document on window")
+}
+
+fn canvas() -> HtmlCanvasElement {
+    document()
+        .get_element_by_id("canvas")
+        .expect("failed to get #canvas element")
+        .dyn_into::<web_sys::HtmlCanvasElement>()
+        .map_err(|_| ())
+        .expect("failed to get html canvas element")
 }

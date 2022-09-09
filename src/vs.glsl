@@ -11,7 +11,7 @@ varying highp vec2 vTextureCoord;
 varying highp vec3 vLighting;
 
 void main(void) {
-    gl_Position =  uProjectionMatrix * uModelViewMatrix * uTransformationMatrix * aVertexPosition;
+    gl_Position = uProjectionMatrix * uModelViewMatrix * uTransformationMatrix * aVertexPosition;
     vTextureCoord = aTextureCoord;
 
     // Apply lighting effect

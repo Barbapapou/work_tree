@@ -26,6 +26,7 @@ features = [
     'ClientQueryOptions',
     'HtmlCanvasElement',
     'HtmlImageElement',
+    'ResizeObserver',
     'WebGlBuffer',
     'WebGlVertexArrayObject',
     'WebGlRenderingContext',
