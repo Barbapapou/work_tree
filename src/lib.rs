@@ -5,13 +5,10 @@ mod mesh;
 
 use crate::entity::Entity;
 use gloo::render::{request_animation_frame, AnimationFrame};
-use nalgebra::{Matrix4, Orthographic3, Vector3};
+use nalgebra::{Matrix4, Orthographic3, Vector2, Vector3};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::{
-    Document, HtmlCanvasElement, HtmlImageElement, WebGlProgram, WebGlRenderingContext,
-    WebGlShader, WebGlTexture, Window,
-};
+use web_sys::{Document, MouseEvent, HtmlCanvasElement, HtmlImageElement, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlTexture, Window};
 
 static mut RENDERER: Option<Renderer> = None;
 
@@ -20,6 +17,12 @@ extern "C" {
     fn alert(s: &str);
     #[wasm_bindgen(js_namespace = console)]
     fn log(s: &str);
+}
+
+enum MouseState {
+    Idle,
+    Down,
+    Pressed,
 }
 
 struct Renderer {
@@ -33,6 +36,9 @@ struct Renderer {
     camera_pos: Vector3<f32>,
     camera_rot: Vector3<f32>,
     entities: Vec<Entity>,
+    last_mouse_position: Vector2<f64>,
+    current_mouse_position: Vector2<f64>,
+    mouse_state: MouseState,
     sample_delta: Vec<f32>,
 }
 
@@ -42,11 +48,37 @@ pub fn run() {
 
     let canvas = canvas();
 
+    let closure = Closure::<dyn FnMut(_)>::new(move |event: MouseEvent| {
+        let mouse_pos = get_mouse_position(event);
+        document()
+            .get_element_by_id("mouse_pos")
+            .unwrap()
+            .set_text_content(Some(format!("{}, {}", mouse_pos.x, mouse_pos.y).as_str()));
+        let mut renderer = unsafe { RENDERER.as_mut().unwrap() };
+        renderer.current_mouse_position = mouse_pos;
+    });
+    document().add_event_listener_with_callback("mousemove", closure.as_ref().unchecked_ref()).expect("failed to setup mousemove callback");
+    closure.forget();
+
+    let closure = Closure::<dyn FnMut(_)>::new(move |event: MouseEvent| {
+        let mut renderer = unsafe { RENDERER.as_mut().unwrap() };
+        renderer.mouse_state = MouseState::Down;
+    });
+    document().add_event_listener_with_callback("mousedown", closure.as_ref().unchecked_ref()).expect("failed to setup mousemove callback");
+    closure.forget();
+
+    let closure = Closure::<dyn FnMut(_)>::new(move |event: MouseEvent| {
+        let mut renderer = unsafe { RENDERER.as_mut().unwrap() };
+        renderer.mouse_state = MouseState::Idle;
+    });
+    document().add_event_listener_with_callback("mouseup", closure.as_ref().unchecked_ref()).expect("failed to setup mousemove callback");
+    closure.forget();
+
     let gl = canvas
         .get_context("webgl")
         .expect("unable to initialize WebGL, your browser or machine may not support it.")
         .expect("failed to retrieve context")
-        .dyn_into::<web_sys::WebGlRenderingContext>()
+        .dyn_into::<WebGlRenderingContext>()
         .expect("failed to convert context into webgl context");
 
     let vertex_shader_source = include_str!("vs.glsl");
@@ -86,6 +118,9 @@ pub fn run() {
             camera_rot: Vector3::new(0.0, 0.0, 0.0),
             texture,
             entities,
+            last_mouse_position: Vector2::new(0.0, 0.0),
+            current_mouse_position: Vector2::new(0.0, 0.0),
+            mouse_state: MouseState::Idle,
             sample_delta: Vec::new(),
         })
     }
@@ -108,14 +143,25 @@ fn update(timestamp: f64) {
         .unwrap()
         .set_text_content(Some(format!("{:<5.1}", avg_tps * 1000.0).as_str()));
 
+    let mouse_delta = renderer.current_mouse_position - renderer.last_mouse_position;
+    renderer.last_mouse_position = renderer.current_mouse_position;
+    document()
+        .get_element_by_id("mouse_delta")
+        .unwrap()
+        .set_text_content(Some(format!("{}, {}", mouse_delta.x, mouse_delta.y).as_str()));
+
+
     for entity in &mut renderer.entities {
         let x_pos = entity.position.x;
         let x = entity.rotation.x;
         let y = entity.rotation.x;
         entity.rotation = Vector3::new(x + delta_time + x_pos * 0.001, y + delta_time, 0.0);
     }
-    renderer.camera_pos.x += 0.01;
-    renderer.camera_pos.y += 0.01;
+
+    if let MouseState::Down = renderer.mouse_state {
+        renderer.camera_pos.x -= mouse_delta.x as f32 * 0.01;
+        renderer.camera_pos.y += mouse_delta.y as f32 * 0.01;
+    }
 
     let canvas = canvas(); // todo: only work on chrome ???
     renderer.display_width = canvas.client_width();
@@ -301,6 +347,14 @@ fn is_power_of_2(value: u32) -> bool {
     value & (value - 1) == 0
 }
 
+fn get_mouse_position(event: MouseEvent) -> Vector2<f64>{
+    let canvas = canvas();
+    let rect = canvas.get_bounding_client_rect();
+    let scale_x = canvas.width() as f64 / rect.width();
+    let scale_y = canvas.height() as f64 / rect.height();
+    Vector2::new((event.client_x() as f64 - rect.left()) * scale_x, (event.client_y() as f64 - rect.top()) * scale_y)
+}
+
 fn window() -> Window {
     web_sys::window().expect("no global `window` exists")
 }
@@ -315,7 +369,7 @@ fn canvas() -> HtmlCanvasElement {
     document()
         .get_element_by_id("canvas")
         .expect("failed to get #canvas element")
-        .dyn_into::<web_sys::HtmlCanvasElement>()
+        .dyn_into::<HtmlCanvasElement>()
         .map_err(|_| ())
         .expect("failed to get html canvas element")
 }

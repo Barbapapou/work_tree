@@ -22,10 +22,12 @@ wee_alloc = { version = "0.4.5", optional = true }
 version = "0.3.59"
 features = [
     'Document',
+    'DomRect',
     'Element',
     'ClientQueryOptions',
     'HtmlCanvasElement',
     'HtmlImageElement',
+    'MouseEvent',
     'ResizeObserver',
     'WebGlBuffer',
     'WebGlVertexArrayObject',
