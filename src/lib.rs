@@ -30,6 +30,8 @@ struct Renderer {
     last_update: i32,
     display_width: i32,
     display_height: i32,
+    camera_pos: Vector3<f32>,
+    camera_rot: Vector3<f32>,
     entities: Vec<Entity>,
     sample_delta: Vec<f32>,
 }
@@ -82,6 +84,8 @@ pub fn run() {
             last_update: 0,
             display_width: canvas.client_width(),
             display_height: canvas.client_height(),
+            camera_pos: Vector3::new(0.0, 0.0, 0.0),
+            camera_rot: Vector3::new(0.0, 0.0, 0.0),
             texture,
             entities,
             sample_delta: Vec::new(),
@@ -104,7 +108,7 @@ fn update(timestamp: f64) {
     document()
         .get_element_by_id("tps")
         .unwrap()
-        .set_text_content(Some(format!("{:.1}", avg_tps * 1000.0).as_str()));
+        .set_text_content(Some(format!("{:<5.1}", avg_tps * 1000.0).as_str()));
 
     for entity in &mut renderer.entities {
         let x_pos = entity.position.x;
@@ -112,6 +116,9 @@ fn update(timestamp: f64) {
         let y = entity.rotation.x;
         entity.rotation = Vector3::new(x + delta_time + x_pos * 0.001, y + delta_time, 0.0);
     }
+    // renderer.camera_pos.x += 0.01;
+    // renderer.camera_pos.y -= 0.01;
+    renderer.camera_pos.z += 0.01;
 
     let canvas = canvas();
     renderer.display_width = canvas.client_width();
@@ -135,7 +142,14 @@ fn draw_scene(renderer: &Renderer) {
     let z_near = 0.1;
     let z_far = 100.0;
     let projection_matrix = Matrix4::new_perspective(aspect, field_of_view, z_near, z_far);
-    let model_view_matrix = Matrix4::new_translation(&Vector3::new(-0.0, 0.0, -6.0));
+    let model_view_matrix = (Matrix4::new_translation(&renderer.camera_pos)
+        * Matrix4::from_euler_angles(
+            renderer.camera_rot.x,
+            renderer.camera_rot.y,
+            renderer.camera_rot.z,
+        ))
+    .try_inverse()
+    .unwrap();
 
     gl.use_program(Some(&renderer.program));
 
