@@ -5,10 +5,15 @@ mod mesh;
 
 use crate::entity::Entity;
 use gloo::render::{request_animation_frame, AnimationFrame};
-use nalgebra::{Matrix4, Orthographic3, Vector2, Vector3};
+use nalgebra::{
+    Matrix4, Orthographic3, Point2, Point3, Projective3, Unit, Vector, Vector2, Vector3, Vector4,
+};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::{Document, MouseEvent, HtmlCanvasElement, HtmlImageElement, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlTexture, Window};
+use web_sys::{
+    Document, HtmlCanvasElement, HtmlImageElement, MouseEvent, MouseScrollEvent, WebGlProgram,
+    WebGlRenderingContext, WebGlShader, WebGlTexture, WheelEvent, Window,
+};
 
 static mut RENDERER: Option<Renderer> = None;
 
@@ -35,6 +40,8 @@ struct Renderer {
     display_height: i32,
     camera_pos: Vector3<f32>,
     camera_rot: Vector3<f32>,
+    projection_matrix: Orthographic3<f32>,
+    zoom: f32,
     entities: Vec<Entity>,
     last_mouse_position: Vector2<f64>,
     current_mouse_position: Vector2<f64>,
@@ -58,7 +65,9 @@ pub fn run() {
         let mut renderer = unsafe { RENDERER.as_mut().unwrap() };
         renderer.current_mouse_position = mouse_pos;
     });
-    document().add_event_listener_with_callback("mousemove", closure.as_ref().unchecked_ref()).expect("failed to setup mousemove callback");
+    document()
+        .add_event_listener_with_callback("mousemove", closure.as_ref().unchecked_ref())
+        .expect("failed to setup mousemove callback");
     closure.forget();
 
     let closure = Closure::<dyn FnMut(_)>::new(move |event: MouseEvent| {
@@ -66,14 +75,32 @@ pub fn run() {
         renderer.mouse_state = MouseState::Down;
         renderer.mouse_down_init_mouse_position = get_mouse_position(event);
     });
-    document().add_event_listener_with_callback("mousedown", closure.as_ref().unchecked_ref()).expect("failed to setup mousemove callback");
+    document()
+        .add_event_listener_with_callback("mousedown", closure.as_ref().unchecked_ref())
+        .expect("failed to setup mousedown callback");
     closure.forget();
 
     let closure = Closure::<dyn FnMut(_)>::new(move |_event: MouseEvent| {
         let mut renderer = unsafe { RENDERER.as_mut().unwrap() };
         renderer.mouse_state = MouseState::Idle;
     });
-    document().add_event_listener_with_callback("mouseup", closure.as_ref().unchecked_ref()).expect("failed to setup mousemove callback");
+    document()
+        .add_event_listener_with_callback("mouseup", closure.as_ref().unchecked_ref())
+        .expect("failed to setup mouseup callback");
+    closure.forget();
+
+    let closure = Closure::<dyn FnMut(_)>::new(move |event: WheelEvent| {
+        let mut renderer = unsafe { RENDERER.as_mut().unwrap() };
+        if event.delta_y() > 0.0 {
+            renderer.zoom *= 1.1;
+        } else {
+            renderer.zoom *= 0.909_090_94;
+        }
+        renderer.zoom = renderer.zoom.clamp(0.1, 3.7);
+    });
+    document()
+        .add_event_listener_with_callback("wheel", closure.as_ref().unchecked_ref())
+        .expect("failed to setup wheel callback");
     closure.forget();
 
     let gl = canvas
@@ -102,8 +129,7 @@ pub fn run() {
     for x in -4..4 {
         for y in -1..2 {
             let mut cube = Entity::new(&gl);
-            cube.position =
-                Vector3::new(x as f32 * factor, y as f32 * factor, 0.0);
+            cube.position = Vector3::new(x as f32 * factor, y as f32 * factor, 0.0);
             entities.push(cube);
         }
     }
@@ -118,6 +144,8 @@ pub fn run() {
             display_height: canvas.client_height(),
             camera_pos: Vector3::new(0.0, 0.0, 10.0),
             camera_rot: Vector3::new(0.0, 0.0, 0.0),
+            projection_matrix: Orthographic3::from_fov(1.0, 1.0, 0.0, 1.0), // dummy projection
+            zoom: 1.0,
             texture,
             entities,
             last_mouse_position: Vector2::new(0.0, 0.0),
@@ -151,9 +179,17 @@ fn update(timestamp: f64) {
     document()
         .get_element_by_id("mouse_delta")
         .unwrap()
-        .set_text_content(Some(format!("{}, {}", mouse_delta.x, mouse_delta.y).as_str()));
-
+        .set_text_content(Some(
+            format!("{}, {}", mouse_delta.x, mouse_delta.y).as_str(),
+        ));
     update_mouse_state(renderer);
+
+    let world_pos = get_world_pos_from_viewport_pos(renderer.last_mouse_position, 0.0);
+
+    document()
+        .get_element_by_id("mouse_world_position")
+        .unwrap()
+        .set_text_content(Some(format!("{}, {}", world_pos.x, world_pos.y).as_str()));
 
     for entity in &mut renderer.entities {
         let x_pos = entity.position.x;
@@ -180,7 +216,7 @@ fn update(timestamp: f64) {
     renderer.animation_handler = request_animation_frame(update);
 }
 
-fn draw_scene(renderer: &Renderer) {
+fn draw_scene(renderer: &mut Renderer) {
     let gl = &renderer.gl;
     gl.viewport(0, 0, canvas().width() as i32, canvas().height() as i32);
     gl.clear(WebGlRenderingContext::COLOR_BUFFER_BIT | WebGlRenderingContext::DEPTH_BUFFER_BIT);
@@ -189,7 +225,8 @@ fn draw_scene(renderer: &Renderer) {
     let field_of_view = 45.0 * std::f32::consts::PI / 180.0;
     let z_near = 0.1;
     let z_far = 100.0;
-    let projection_matrix = Orthographic3::from_fov(aspect, field_of_view, z_near, z_far);
+    renderer.projection_matrix =
+        Orthographic3::from_fov(aspect, field_of_view * renderer.zoom, z_near, z_far);
     let model_view_matrix = (Matrix4::new_translation(&renderer.camera_pos)
         * Matrix4::from_euler_angles(
             renderer.camera_rot.x,
@@ -207,7 +244,7 @@ fn draw_scene(renderer: &Renderer) {
                 .expect("can't get projection matrix location"),
         ),
         false,
-        projection_matrix.as_matrix().as_slice(),
+        renderer.projection_matrix.as_matrix().as_slice(),
     );
 
     gl.uniform_matrix4fv_with_f32_array(
@@ -348,33 +385,42 @@ fn load_texture(gl: &WebGlRenderingContext, path: &str) -> WebGlTexture {
     texture
 }
 
-fn update_mouse_state(renderer: &mut Renderer){
+fn update_mouse_state(renderer: &mut Renderer) {
     match renderer.mouse_state {
-        MouseState::Idle => {
-
-        }
+        MouseState::Idle => {}
         MouseState::Down => {
-            let mouse_delta = renderer.last_mouse_position - renderer.mouse_down_init_mouse_position;
+            let mouse_delta =
+                renderer.last_mouse_position - renderer.mouse_down_init_mouse_position;
             if mouse_delta.magnitude() > 10.0 {
                 renderer.mouse_state = MouseState::Drag;
             }
         }
-        MouseState::Drag => {
-
-        }
+        MouseState::Drag => {}
     }
 }
 
-fn get_mouse_position(event: MouseEvent) -> Vector2<f64>{
+fn get_mouse_position(event: MouseEvent) -> Vector2<f64> {
     let canvas = canvas();
     let rect = canvas.get_bounding_client_rect();
     let scale_x = canvas.width() as f64 / rect.width();
     let scale_y = canvas.height() as f64 / rect.height();
-    Vector2::new((event.client_x() as f64 - rect.left()) * scale_x, (event.client_y() as f64 - rect.top()) * scale_y)
+    Vector2::new(
+        (event.client_x() as f64 - rect.left()) * scale_x,
+        (event.client_y() as f64 - rect.top()) * scale_y,
+    )
 }
-
-fn get_world_pos_from_viewport_pos(pos: Vector2<f64>, z_pos: f64) -> Vector3<f64> {
-    Vector3::new(0.0, 0.0, 0.0)
+// todo: convert every f64 got from js method to f32
+fn get_world_pos_from_viewport_pos(pos: Vector2<f64>, z_pos: f64) -> Vector3<f32> {
+    let renderer = unsafe { RENDERER.as_ref().unwrap() };
+    let y_view = (pos.y - renderer.display_height as f64).abs();
+    let x_clip = pos.x / renderer.display_width as f64 * 2.0 - 1.0;
+    let y_clip = y_view / renderer.display_height as f64 * 2.0 - 1.0;
+    let clip_space_pos = Point3::new(x_clip as f32, y_clip as f32, z_pos as f32);
+    let transformation_camera = Matrix4::new_translation(&renderer.camera_pos);
+    let view_space_pos = renderer.projection_matrix.unproject_point(&clip_space_pos);
+    let world_pos = Matrix4::new_translation(&view_space_pos.coords)
+        * transformation_camera.try_inverse().unwrap();
+    Vector3::new(world_pos.m14, world_pos.m24, world_pos.m34)
 }
 
 fn is_power_of_2(value: u32) -> bool {

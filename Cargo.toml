@@ -15,6 +15,7 @@ wasm-bindgen = "0.2.63"
 js-sys = "0.3.59"
 gloo = "0.8.0"
 nalgebra = "0.31.1"
+#nalgebra-glm = "0.17.0"
 console_error_panic_hook = { version = "0.1.6", optional = true }
 wee_alloc = { version = "0.4.5", optional = true }
 
@@ -27,6 +28,7 @@ features = [
     'ClientQueryOptions',
     'HtmlCanvasElement',
     'HtmlImageElement',
+    'MouseScrollEvent',
     'MouseEvent',
     'ResizeObserver',
     'WebGlBuffer',
@@ -37,6 +39,7 @@ features = [
     'WebGlTexture',
     'WebGlUniformLocation',
     'Window',
+    'WheelEvent',
 ]
 
 [dev-dependencies]

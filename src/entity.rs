@@ -5,7 +5,7 @@ use web_sys::{WebGlProgram, WebGlRenderingContext};
 pub struct Entity {
     pub position: Vector3<f32>,
     pub rotation: Vector3<f32>,
-    pub scale: Vector3<f32>, // todo add scale to transformation_matrix computation
+    pub scale: Vector3<f32>,
     mesh: Mesh,
 }
 
@@ -14,7 +14,8 @@ impl Entity {
         self.mesh.bind(gl, shader);
         // add transformation uniform
         let transformation_matrix = Matrix4::new_translation(&self.position)
-            * Matrix4::from_euler_angles(self.rotation.x, self.rotation.y, self.rotation.z);
+            * Matrix4::from_euler_angles(self.rotation.x, self.rotation.y, self.rotation.z)
+            * Matrix4::new_nonuniform_scaling(&self.scale);
 
         gl.uniform_matrix4fv_with_f32_array(
             Some(
