@@ -5,7 +5,7 @@ mod mesh;
 
 use crate::entity::Entity;
 use gloo::render::{request_animation_frame, AnimationFrame};
-use nalgebra::{Matrix4, Vector3};
+use nalgebra::{Matrix4, Orthographic3, Vector3};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{
@@ -67,12 +67,10 @@ pub fn run() {
     let factor = 3.464_101_6;
     for x in -4..4 {
         for y in -1..2 {
-            for z in 0..8 {
-                let mut cube = Entity::new(&gl);
-                cube.position =
-                    Vector3::new(x as f32 * factor, y as f32 * factor, z as f32 * -factor);
-                entities.push(cube);
-            }
+            let mut cube = Entity::new(&gl);
+            cube.position =
+                Vector3::new(x as f32 * factor, y as f32 * factor, 0.0);
+            entities.push(cube);
         }
     }
 
@@ -84,7 +82,7 @@ pub fn run() {
             last_update: 0,
             display_width: canvas.client_width(),
             display_height: canvas.client_height(),
-            camera_pos: Vector3::new(0.0, 0.0, 0.0),
+            camera_pos: Vector3::new(0.0, 0.0, 10.0),
             camera_rot: Vector3::new(0.0, 0.0, 0.0),
             texture,
             entities,
@@ -116,11 +114,10 @@ fn update(timestamp: f64) {
         let y = entity.rotation.x;
         entity.rotation = Vector3::new(x + delta_time + x_pos * 0.001, y + delta_time, 0.0);
     }
-    // renderer.camera_pos.x += 0.01;
-    // renderer.camera_pos.y -= 0.01;
-    renderer.camera_pos.z += 0.01;
+    renderer.camera_pos.x += 0.01;
+    renderer.camera_pos.y += 0.01;
 
-    let canvas = canvas();
+    let canvas = canvas(); // todo: only work on chrome ???
     renderer.display_width = canvas.client_width();
     renderer.display_height = canvas.client_height();
     // set draw buffer size to display size
@@ -141,7 +138,7 @@ fn draw_scene(renderer: &Renderer) {
     let field_of_view = 45.0 * std::f32::consts::PI / 180.0;
     let z_near = 0.1;
     let z_far = 100.0;
-    let projection_matrix = Matrix4::new_perspective(aspect, field_of_view, z_near, z_far);
+    let projection_matrix = Orthographic3::from_fov(aspect, field_of_view, z_near, z_far);
     let model_view_matrix = (Matrix4::new_translation(&renderer.camera_pos)
         * Matrix4::from_euler_angles(
             renderer.camera_rot.x,
@@ -159,7 +156,7 @@ fn draw_scene(renderer: &Renderer) {
                 .expect("can't get projection matrix location"),
         ),
         false,
-        projection_matrix.as_slice(),
+        projection_matrix.as_matrix().as_slice(),
     );
 
     gl.uniform_matrix4fv_with_f32_array(
