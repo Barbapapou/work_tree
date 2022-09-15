@@ -22,7 +22,7 @@ extern "C" {
 enum MouseState {
     Idle,
     Down,
-    Pressed,
+    Drag,
 }
 
 struct Renderer {
@@ -38,6 +38,7 @@ struct Renderer {
     entities: Vec<Entity>,
     last_mouse_position: Vector2<f64>,
     current_mouse_position: Vector2<f64>,
+    mouse_down_init_mouse_position: Vector2<f64>,
     mouse_state: MouseState,
     sample_delta: Vec<f32>,
 }
@@ -63,11 +64,12 @@ pub fn run() {
     let closure = Closure::<dyn FnMut(_)>::new(move |event: MouseEvent| {
         let mut renderer = unsafe { RENDERER.as_mut().unwrap() };
         renderer.mouse_state = MouseState::Down;
+        renderer.mouse_down_init_mouse_position = get_mouse_position(event);
     });
     document().add_event_listener_with_callback("mousedown", closure.as_ref().unchecked_ref()).expect("failed to setup mousemove callback");
     closure.forget();
 
-    let closure = Closure::<dyn FnMut(_)>::new(move |event: MouseEvent| {
+    let closure = Closure::<dyn FnMut(_)>::new(move |_event: MouseEvent| {
         let mut renderer = unsafe { RENDERER.as_mut().unwrap() };
         renderer.mouse_state = MouseState::Idle;
     });
@@ -120,6 +122,7 @@ pub fn run() {
             entities,
             last_mouse_position: Vector2::new(0.0, 0.0),
             current_mouse_position: Vector2::new(0.0, 0.0),
+            mouse_down_init_mouse_position: Vector2::new(0.0, 0.0),
             mouse_state: MouseState::Idle,
             sample_delta: Vec::new(),
         })
@@ -150,6 +153,7 @@ fn update(timestamp: f64) {
         .unwrap()
         .set_text_content(Some(format!("{}, {}", mouse_delta.x, mouse_delta.y).as_str()));
 
+    update_mouse_state(renderer);
 
     for entity in &mut renderer.entities {
         let x_pos = entity.position.x;
@@ -158,7 +162,8 @@ fn update(timestamp: f64) {
         entity.rotation = Vector3::new(x + delta_time + x_pos * 0.001, y + delta_time, 0.0);
     }
 
-    if let MouseState::Down = renderer.mouse_state {
+    // move camera such that mouse pos is still in the same world space position
+    if let MouseState::Drag = renderer.mouse_state {
         renderer.camera_pos.x -= mouse_delta.x as f32 * 0.01;
         renderer.camera_pos.y += mouse_delta.y as f32 * 0.01;
     }
@@ -343,8 +348,21 @@ fn load_texture(gl: &WebGlRenderingContext, path: &str) -> WebGlTexture {
     texture
 }
 
-fn is_power_of_2(value: u32) -> bool {
-    value & (value - 1) == 0
+fn update_mouse_state(renderer: &mut Renderer){
+    match renderer.mouse_state {
+        MouseState::Idle => {
+
+        }
+        MouseState::Down => {
+            let mouse_delta = renderer.last_mouse_position - renderer.mouse_down_init_mouse_position;
+            if mouse_delta.magnitude() > 10.0 {
+                renderer.mouse_state = MouseState::Drag;
+            }
+        }
+        MouseState::Drag => {
+
+        }
+    }
 }
 
 fn get_mouse_position(event: MouseEvent) -> Vector2<f64>{
@@ -353,6 +371,14 @@ fn get_mouse_position(event: MouseEvent) -> Vector2<f64>{
     let scale_x = canvas.width() as f64 / rect.width();
     let scale_y = canvas.height() as f64 / rect.height();
     Vector2::new((event.client_x() as f64 - rect.left()) * scale_x, (event.client_y() as f64 - rect.top()) * scale_y)
+}
+
+fn get_world_pos_from_viewport_pos(pos: Vector2<f64>, z_pos: f64) -> Vector3<f64> {
+    Vector3::new(0.0, 0.0, 0.0)
+}
+
+fn is_power_of_2(value: u32) -> bool {
+    value & (value - 1) == 0
 }
 
 fn window() -> Window {
