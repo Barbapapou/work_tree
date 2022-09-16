@@ -4,6 +4,7 @@ mod entity;
 mod mesh;
 
 use crate::entity::Entity;
+use crate::MouseState::Idle;
 use gloo::render::{request_animation_frame, AnimationFrame};
 use nalgebra::{Matrix4, Orthographic3, Point3, Vector2, Vector3};
 use wasm_bindgen::prelude::*;
@@ -40,9 +41,10 @@ struct Renderer {
     projection_matrix: Orthographic3<f32>,
     zoom: f32,
     entities: Vec<Entity>,
-    last_mouse_position: Vector2<f64>,
-    current_mouse_position: Vector2<f64>,
-    mouse_down_init_mouse_position: Vector2<f64>,
+    last_mouse_position: Vector2<f32>,
+    current_mouse_position: Vector2<f32>,
+    mouse_down_init_mouse_position: Vector2<f32>,
+    mouse_pos_on_init_drag: Vector3<f32>,
     mouse_state: MouseState,
     sample_delta: Vec<f32>,
 }
@@ -55,10 +57,6 @@ pub fn run() {
 
     let closure = Closure::<dyn FnMut(_)>::new(move |event: MouseEvent| {
         let mouse_pos = get_mouse_position(event);
-        document()
-            .get_element_by_id("mouse_pos")
-            .unwrap()
-            .set_text_content(Some(format!("{}, {}", mouse_pos.x, mouse_pos.y).as_str()));
         let mut renderer = unsafe { RENDERER.as_mut().unwrap() };
         renderer.current_mouse_position = mouse_pos;
     });
@@ -79,7 +77,7 @@ pub fn run() {
 
     let closure = Closure::<dyn FnMut(_)>::new(move |_event: MouseEvent| {
         let mut renderer = unsafe { RENDERER.as_mut().unwrap() };
-        renderer.mouse_state = MouseState::Idle;
+        renderer.mouse_state = Idle;
     });
     document()
         .add_event_listener_with_callback("mouseup", closure.as_ref().unchecked_ref())
@@ -147,7 +145,8 @@ pub fn run() {
             last_mouse_position: Vector2::new(0.0, 0.0),
             current_mouse_position: Vector2::new(0.0, 0.0),
             mouse_down_init_mouse_position: Vector2::new(0.0, 0.0),
-            mouse_state: MouseState::Idle,
+            mouse_pos_on_init_drag: Vector3::new(0.0, 0.0, 0.0),
+            mouse_state: Idle,
             sample_delta: Vec::new(),
         })
     }
@@ -170,14 +169,7 @@ fn update(timestamp: f64) {
         .unwrap()
         .set_text_content(Some(format!("{:<5.1}", avg_tps * 1000.0).as_str()));
 
-    let mouse_delta = renderer.current_mouse_position - renderer.last_mouse_position;
     renderer.last_mouse_position = renderer.current_mouse_position;
-    document()
-        .get_element_by_id("mouse_delta")
-        .unwrap()
-        .set_text_content(Some(
-            format!("{}, {}", mouse_delta.x, mouse_delta.y).as_str(),
-        ));
     update_mouse_state(renderer);
 
     let world_pos = get_world_pos_from_viewport_pos(renderer.last_mouse_position);
@@ -187,17 +179,29 @@ fn update(timestamp: f64) {
         .unwrap()
         .set_text_content(Some(format!("{}, {}", world_pos.x, world_pos.y).as_str()));
 
+    document()
+        .get_element_by_id("camera_position")
+        .unwrap()
+        .set_text_content(Some(
+            format!(
+                "{}, {}, {}",
+                renderer.camera_pos.x, renderer.camera_pos.y, renderer.camera_pos.z,
+            )
+            .as_str(),
+        ));
+
+    // move camera such that mouse pos is still in the same world space position
+    if let MouseState::Drag = renderer.mouse_state {
+        let mut offset = world_pos - renderer.mouse_pos_on_init_drag;
+        offset.z = 0.0;
+        renderer.camera_pos -= offset;
+    }
+
     for entity in &mut renderer.entities {
         let x_pos = entity.position.x;
         let x = entity.rotation.x;
         let y = entity.rotation.x;
         entity.rotation = Vector3::new(x + delta_time + x_pos * 0.001, y + delta_time, 0.0);
-    }
-
-    // move camera such that mouse pos is still in the same world space position
-    if let MouseState::Drag = renderer.mouse_state {
-        renderer.camera_pos.x -= mouse_delta.x as f32 * 0.01;
-        renderer.camera_pos.y += mouse_delta.y as f32 * 0.01;
     }
 
     let canvas = canvas(); // todo: only work on chrome ???
@@ -384,28 +388,30 @@ fn update_mouse_state(renderer: &mut Renderer) {
                 renderer.last_mouse_position - renderer.mouse_down_init_mouse_position;
             if mouse_delta.magnitude() > 10.0 {
                 renderer.mouse_state = MouseState::Drag;
+                renderer.mouse_pos_on_init_drag =
+                    get_world_pos_from_viewport_pos(renderer.current_mouse_position);
             }
         }
         MouseState::Drag => {}
     }
 }
 
-fn get_mouse_position(event: MouseEvent) -> Vector2<f64> {
+fn get_mouse_position(event: MouseEvent) -> Vector2<f32> {
     let canvas = canvas();
     let rect = canvas.get_bounding_client_rect();
-    let scale_x = canvas.width() as f64 / rect.width();
-    let scale_y = canvas.height() as f64 / rect.height();
+    let scale_x = canvas.width() as f32 / rect.width() as f32;
+    let scale_y = canvas.height() as f32 / rect.height() as f32;
     Vector2::new(
-        (event.client_x() as f64 - rect.left()) * scale_x,
-        (event.client_y() as f64 - rect.top()) * scale_y,
+        (event.client_x() as f32 - rect.left() as f32) * scale_x,
+        (event.client_y() as f32 - rect.top() as f32) * scale_y,
     )
 }
-// todo: convert every f64 got from js method to f32
-fn get_world_pos_from_viewport_pos(pos: Vector2<f64>) -> Vector3<f32> {
+
+fn get_world_pos_from_viewport_pos(pos: Vector2<f32>) -> Vector3<f32> {
     let renderer = unsafe { RENDERER.as_ref().unwrap() };
-    let y_view = (pos.y - renderer.display_height as f64).abs();
-    let x_clip = pos.x / renderer.display_width as f64 * 2.0 - 1.0;
-    let y_clip = y_view / renderer.display_height as f64 * 2.0 - 1.0;
+    let y_view = (pos.y - renderer.display_height as f32).abs();
+    let x_clip = pos.x / renderer.display_width as f32 * 2.0 - 1.0;
+    let y_clip = y_view / renderer.display_height as f32 * 2.0 - 1.0;
     let clip_space_pos = Point3::new(x_clip as f32, y_clip as f32, 1.0);
     let transformation_camera = Matrix4::new_translation(&renderer.camera_pos);
     let view_space_pos = renderer.projection_matrix.unproject_point(&clip_space_pos);
