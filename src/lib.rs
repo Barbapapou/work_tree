@@ -5,14 +5,12 @@ mod mesh;
 
 use crate::entity::Entity;
 use gloo::render::{request_animation_frame, AnimationFrame};
-use nalgebra::{
-    Matrix4, Orthographic3, Point2, Point3, Projective3, Unit, Vector, Vector2, Vector3, Vector4,
-};
+use nalgebra::{Matrix4, Orthographic3, Point3, Vector2, Vector3};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{
-    Document, HtmlCanvasElement, HtmlImageElement, MouseEvent, MouseScrollEvent, WebGlProgram,
-    WebGlRenderingContext, WebGlShader, WebGlTexture, WheelEvent, Window,
+    Document, HtmlCanvasElement, HtmlImageElement, MouseEvent, WebGlProgram, WebGlRenderingContext,
+    WebGlShader, WebGlTexture, WheelEvent, Window,
 };
 
 static mut RENDERER: Option<Renderer> = None;
@@ -39,7 +37,6 @@ struct Renderer {
     display_width: i32,
     display_height: i32,
     camera_pos: Vector3<f32>,
-    camera_rot: Vector3<f32>,
     projection_matrix: Orthographic3<f32>,
     zoom: f32,
     entities: Vec<Entity>,
@@ -143,7 +140,6 @@ pub fn run() {
             display_width: canvas.client_width(),
             display_height: canvas.client_height(),
             camera_pos: Vector3::new(0.0, 0.0, 10.0),
-            camera_rot: Vector3::new(0.0, 0.0, 0.0),
             projection_matrix: Orthographic3::from_fov(1.0, 1.0, 0.0, 1.0), // dummy projection
             zoom: 1.0,
             texture,
@@ -184,7 +180,7 @@ fn update(timestamp: f64) {
         ));
     update_mouse_state(renderer);
 
-    let world_pos = get_world_pos_from_viewport_pos(renderer.last_mouse_position, 0.0);
+    let world_pos = get_world_pos_from_viewport_pos(renderer.last_mouse_position);
 
     document()
         .get_element_by_id("mouse_world_position")
@@ -227,14 +223,9 @@ fn draw_scene(renderer: &mut Renderer) {
     let z_far = 100.0;
     renderer.projection_matrix =
         Orthographic3::from_fov(aspect, field_of_view * renderer.zoom, z_near, z_far);
-    let model_view_matrix = (Matrix4::new_translation(&renderer.camera_pos)
-        * Matrix4::from_euler_angles(
-            renderer.camera_rot.x,
-            renderer.camera_rot.y,
-            renderer.camera_rot.z,
-        ))
-    .try_inverse()
-    .unwrap();
+    let model_view_matrix = (Matrix4::new_translation(&renderer.camera_pos))
+        .try_inverse()
+        .unwrap();
 
     gl.use_program(Some(&renderer.program));
 
@@ -410,16 +401,15 @@ fn get_mouse_position(event: MouseEvent) -> Vector2<f64> {
     )
 }
 // todo: convert every f64 got from js method to f32
-fn get_world_pos_from_viewport_pos(pos: Vector2<f64>, z_pos: f64) -> Vector3<f32> {
+fn get_world_pos_from_viewport_pos(pos: Vector2<f64>) -> Vector3<f32> {
     let renderer = unsafe { RENDERER.as_ref().unwrap() };
     let y_view = (pos.y - renderer.display_height as f64).abs();
     let x_clip = pos.x / renderer.display_width as f64 * 2.0 - 1.0;
     let y_clip = y_view / renderer.display_height as f64 * 2.0 - 1.0;
-    let clip_space_pos = Point3::new(x_clip as f32, y_clip as f32, z_pos as f32);
+    let clip_space_pos = Point3::new(x_clip as f32, y_clip as f32, 1.0);
     let transformation_camera = Matrix4::new_translation(&renderer.camera_pos);
     let view_space_pos = renderer.projection_matrix.unproject_point(&clip_space_pos);
-    let world_pos = Matrix4::new_translation(&view_space_pos.coords)
-        * transformation_camera.try_inverse().unwrap();
+    let world_pos = Matrix4::new_translation(&view_space_pos.coords) * transformation_camera;
     Vector3::new(world_pos.m14, world_pos.m24, world_pos.m34)
 }
 
