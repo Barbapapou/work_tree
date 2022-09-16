@@ -4,7 +4,7 @@ mod entity;
 mod mesh;
 
 use crate::entity::Entity;
-use crate::MouseState::Idle;
+use crate::MouseState::{Down, Drag, Idle};
 use gloo::render::{request_animation_frame, AnimationFrame};
 use nalgebra::{Matrix4, Orthographic3, Point3, Vector2, Vector3};
 use wasm_bindgen::prelude::*;
@@ -13,6 +13,42 @@ use web_sys::{
     Document, HtmlCanvasElement, HtmlImageElement, MouseEvent, WebGlProgram, WebGlRenderingContext,
     WebGlShader, WebGlTexture, WheelEvent, Window,
 };
+
+#[macro_export]
+macro_rules! debug_web_number {
+    ( $($div_name:expr, $value:expr)?) => {
+        $(
+        document()
+            .get_element_by_id($div_name)
+            .unwrap()
+            .set_text_content(Some(format!("{:<5.1}", $value).as_str()));
+        )?
+    };
+}
+
+#[macro_export]
+macro_rules! debug_web_vector2 {
+    ( $($div_name:expr, $value:expr)?) => {
+        $(
+        document()
+            .get_element_by_id($div_name)
+            .unwrap()
+            .set_text_content(Some(format!("{}, {}", $value.x, $value.y).as_str()));
+        )?
+    };
+}
+
+#[macro_export]
+macro_rules! debug_web_vector3 {
+    ( $($div_name:expr, $value:expr)?) => {
+        $(
+        document()
+            .get_element_by_id($div_name)
+            .unwrap()
+            .set_text_content(Some(format!("{}, {}, {}", $value.x, $value.y, $value.z).as_str()));
+        )?
+    };
+}
 
 static mut RENDERER: Option<Renderer> = None;
 
@@ -67,7 +103,7 @@ pub fn run() {
 
     let closure = Closure::<dyn FnMut(_)>::new(move |event: MouseEvent| {
         let mut renderer = unsafe { RENDERER.as_mut().unwrap() };
-        renderer.mouse_state = MouseState::Down;
+        renderer.mouse_state = Down;
         renderer.mouse_down_init_mouse_position = get_mouse_position(event);
     });
     document()
@@ -164,34 +200,18 @@ fn update(timestamp: f64) {
     }
     let avg_tps: f32 = renderer.sample_delta.iter().sum();
     let avg_tps = avg_tps / renderer.sample_delta.len() as f32;
-    document()
-        .get_element_by_id("tps")
-        .unwrap()
-        .set_text_content(Some(format!("{:<5.1}", avg_tps * 1000.0).as_str()));
+    debug_web_number!["tps", avg_tps * 1000.0];
 
     renderer.last_mouse_position = renderer.current_mouse_position;
     update_mouse_state(renderer);
 
     let world_pos = get_world_pos_from_viewport_pos(renderer.last_mouse_position);
 
-    document()
-        .get_element_by_id("mouse_world_position")
-        .unwrap()
-        .set_text_content(Some(format!("{}, {}", world_pos.x, world_pos.y).as_str()));
-
-    document()
-        .get_element_by_id("camera_position")
-        .unwrap()
-        .set_text_content(Some(
-            format!(
-                "{}, {}, {}",
-                renderer.camera_pos.x, renderer.camera_pos.y, renderer.camera_pos.z,
-            )
-            .as_str(),
-        ));
+    debug_web_vector2!["mouse_world_position", world_pos];
+    debug_web_vector3!["camera_position", renderer.camera_pos];
 
     // move camera such that mouse pos is still in the same world space position
-    if let MouseState::Drag = renderer.mouse_state {
+    if let Drag = renderer.mouse_state {
         let mut offset = world_pos - renderer.mouse_pos_on_init_drag;
         offset.z = 0.0;
         renderer.camera_pos -= offset;
@@ -382,17 +402,17 @@ fn load_texture(gl: &WebGlRenderingContext, path: &str) -> WebGlTexture {
 
 fn update_mouse_state(renderer: &mut Renderer) {
     match renderer.mouse_state {
-        MouseState::Idle => {}
-        MouseState::Down => {
+        Idle => {}
+        Down => {
             let mouse_delta =
                 renderer.last_mouse_position - renderer.mouse_down_init_mouse_position;
             if mouse_delta.magnitude() > 10.0 {
-                renderer.mouse_state = MouseState::Drag;
+                renderer.mouse_state = Drag;
                 renderer.mouse_pos_on_init_drag =
                     get_world_pos_from_viewport_pos(renderer.current_mouse_position);
             }
         }
-        MouseState::Drag => {}
+        Drag => {}
     }
 }
 
