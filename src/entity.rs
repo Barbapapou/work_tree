@@ -43,19 +43,26 @@ impl Entity {
 
     pub fn draw(&self, gl: &WebGlRenderingContext, shader: &WebGlProgram) {
         self.bind(gl, shader);
-
         let offset = 0;
-        let vertex_count = 36;
         let type_ = WebGlRenderingContext::UNSIGNED_SHORT;
         gl.draw_elements_with_i32(
             WebGlRenderingContext::TRIANGLES,
-            vertex_count,
+            self.mesh.vertex_count,
             type_,
             offset,
         );
     }
 
-    pub fn new(gl: &WebGlRenderingContext) -> Entity {
+    pub fn new_quad(gl: &WebGlRenderingContext) -> Entity {
+        Entity {
+            position: Vector3::new(0.0, 0.0, 0.0),
+            rotation: Vector3::new(0.0, 0.0, 0.0),
+            scale: Vector3::new(1.0, 1.0, 1.0),
+            mesh: Mesh::quad(gl),
+        }
+    }
+
+    pub fn new_cube(gl: &WebGlRenderingContext) -> Entity {
         Entity {
             position: Vector3::new(0.0, 0.0, 0.0),
             rotation: Vector3::new(0.0, 0.0, 0.0),

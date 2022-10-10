@@ -2,12 +2,15 @@ extern crate core;
 
 mod entity;
 mod mesh;
+mod text;
 
 use crate::entity::Entity;
+use crate::text::Text;
 use crate::MouseState::{Down, Drag, Up};
 use crate::ZoomState::{Idle, In, Out};
 use gloo::render::{request_animation_frame, AnimationFrame};
 use nalgebra::{Matrix4, Orthographic3, Point3, Vector2, Vector3};
+use std::f32::consts::{PI, TAU};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{
@@ -76,7 +79,7 @@ enum ZoomState {
 
 struct Renderer {
     gl: WebGlRenderingContext,
-    program: WebGlProgram,
+    shader: WebGlProgram,
     animation_handler: AnimationFrame,
     texture: WebGlTexture,
     last_update: i32,
@@ -171,8 +174,8 @@ pub fn run() {
     let mut entities: Vec<Entity> = Vec::new();
     let factor = 3.464_101_6;
     for x in -6..7 {
-        for y in -3..4 {
-            let mut cube = Entity::new(&gl);
+        for y in -0..1 {
+            let mut cube = Entity::new_quad(&gl);
             cube.position = Vector3::new(x as f32 * factor, y as f32 * factor, 0.0);
             entities.push(cube);
         }
@@ -181,13 +184,13 @@ pub fn run() {
     unsafe {
         RENDERER = Some(Renderer {
             gl,
-            program: shader_program,
+            shader: shader_program,
             animation_handler: request_animation_frame(update),
             last_update: 0,
             display_width: canvas.client_width(),
             display_height: canvas.client_height(),
             aspect: canvas.client_width() as f32 / canvas.client_height() as f32,
-            field_of_view: canvas.client_width() as f32 / canvas.client_height() as f32,
+            field_of_view: 45.0 * PI / 180.0,
             z_near: 0.1,
             z_far: 100.0,
             camera_pos: Vector3::new(0.0, 0.0, 10.0),
@@ -245,8 +248,7 @@ fn update(timestamp: f64) {
             }
             Idle => {}
         }
-        renderer.zoom = renderer.zoom.clamp(0.1, 1.7);
-        debug_web_number!("debug", renderer.zoom);
+        renderer.zoom = renderer.zoom.clamp(0.1, 3.7);
         renderer.zoom_state = Idle;
         renderer.projection_matrix = Orthographic3::from_fov(
             renderer.aspect,
@@ -263,8 +265,16 @@ fn update(timestamp: f64) {
     for entity in &mut renderer.entities {
         let x_pos = entity.position.x;
         let x = entity.rotation.x;
-        let y = entity.rotation.x;
-        entity.rotation = Vector3::new(x + delta_time + x_pos * 0.001, y + delta_time, 0.0);
+        let y = entity.rotation.y;
+        let z = entity.rotation.z;
+        entity.rotation = Vector3::new(
+            // 0.0,
+            0.0,
+            // (x + delta_time * x_pos * 0.1) % TAU,
+            // (y + delta_time * x_pos * 0.1) % TAU,
+            0.0,
+            (z + delta_time * x_pos * 0.1) % TAU,
+        );
     }
 
     let canvas = canvas(); // todo: only work on chrome ???
@@ -295,11 +305,11 @@ fn draw_scene(renderer: &mut Renderer) {
         .try_inverse()
         .unwrap();
 
-    gl.use_program(Some(&renderer.program));
+    gl.use_program(Some(&renderer.shader));
 
     gl.uniform_matrix4fv_with_f32_array(
         Some(
-            &gl.get_uniform_location(&renderer.program, "uProjectionMatrix")
+            &gl.get_uniform_location(&renderer.shader, "uProjectionMatrix")
                 .expect("can't get projection matrix location"),
         ),
         false,
@@ -308,7 +318,7 @@ fn draw_scene(renderer: &mut Renderer) {
 
     gl.uniform_matrix4fv_with_f32_array(
         Some(
-            &gl.get_uniform_location(&renderer.program, "uModelViewMatrix")
+            &gl.get_uniform_location(&renderer.shader, "uModelViewMatrix")
                 .expect("can't get model view matrix location"),
         ),
         false,
@@ -318,12 +328,12 @@ fn draw_scene(renderer: &mut Renderer) {
     gl.active_texture(WebGlRenderingContext::TEXTURE0);
     gl.bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&renderer.texture));
     let u_sampler_location = gl
-        .get_uniform_location(&renderer.program, "uSampler")
+        .get_uniform_location(&renderer.shader, "uSampler")
         .expect("can't get uSampler location");
     gl.uniform1i(Some(&u_sampler_location), 0);
 
     for entity in renderer.entities.as_slice() {
-        entity.draw(&renderer.gl, &renderer.program);
+        entity.draw(&renderer.gl, &renderer.shader);
     }
 }
 

@@ -9,6 +9,7 @@ struct VertexBufferObject {
 
 pub struct Mesh {
     vbo: VertexBufferObject,
+    pub vertex_count: i32,
 }
 
 impl Mesh {
@@ -53,6 +54,95 @@ impl Mesh {
             WebGlRenderingContext::ELEMENT_ARRAY_BUFFER,
             Some(&self.vbo.indices),
         );
+    }
+
+    pub fn quad(gl: &WebGlRenderingContext) -> Mesh {
+        let position_buffer = gl.create_buffer().expect("failed to create buffer");
+        gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&position_buffer));
+        #[rustfmt::skip]
+            let vertices = [
+            // Front face
+            -1.0, -1.0, 0.0,
+            1.0, -1.0, 0.0,
+            1.0, 1.0, 0.0,
+            -1.0, 1.0, 0.0,
+        ];
+        unsafe {
+            let vertices = js_sys::Float32Array::view(&vertices);
+            gl.buffer_data_with_array_buffer_view(
+                WebGlRenderingContext::ARRAY_BUFFER,
+                &(vertices),
+                WebGlRenderingContext::STATIC_DRAW,
+            );
+        }
+
+        let uv_buffer = gl.create_buffer().expect("failed to create buffer");
+        gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&uv_buffer));
+        #[rustfmt::skip]
+            let uvs = [
+            // Front
+            0.0, 0.0,
+            1.0, 0.0,
+            1.0, 1.0,
+            0.0, 1.0,
+        ];
+        unsafe {
+            let uvs = js_sys::Float32Array::view(&uvs);
+            gl.buffer_data_with_array_buffer_view(
+                WebGlRenderingContext::ARRAY_BUFFER,
+                &(uvs),
+                WebGlRenderingContext::STATIC_DRAW,
+            );
+        }
+
+        let normal_buffer = gl.create_buffer().expect("failed to create buffer");
+        gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&normal_buffer));
+        #[rustfmt::skip]
+            let normals = [
+            // Front
+            0.0, 0.0, 1.0,
+            0.0, 0.0, 1.0,
+            0.0, 0.0, 1.0,
+            0.0, 0.0, 1.0,
+        ];
+        unsafe {
+            let normals = js_sys::Float32Array::view(&normals);
+            gl.buffer_data_with_array_buffer_view(
+                WebGlRenderingContext::ARRAY_BUFFER,
+                &(normals),
+                WebGlRenderingContext::STATIC_DRAW,
+            );
+        }
+
+        let index_buffer = gl.create_buffer().expect("failed to create buffer");
+        gl.bind_buffer(
+            WebGlRenderingContext::ELEMENT_ARRAY_BUFFER,
+            Some(&index_buffer),
+        );
+        #[rustfmt::skip]
+            let indices = [
+            0, 1, 2, 0, 2, 3,    // front
+        ];
+        unsafe {
+            let indices = js_sys::Uint16Array::view(&indices);
+            gl.buffer_data_with_array_buffer_view(
+                WebGlRenderingContext::ELEMENT_ARRAY_BUFFER,
+                &(indices),
+                WebGlRenderingContext::STATIC_DRAW,
+            );
+        }
+
+        let vbo = VertexBufferObject {
+            position: position_buffer,
+            uv: uv_buffer,
+            normal: normal_buffer,
+            indices: index_buffer,
+        };
+
+        Mesh {
+            vbo,
+            vertex_count: 6,
+        }
     }
 
     pub fn cube(gl: &WebGlRenderingContext) -> Mesh {
@@ -228,6 +318,9 @@ impl Mesh {
             indices: index_buffer,
         };
 
-        Mesh { vbo }
+        Mesh {
+            vbo,
+            vertex_count: 36,
+        }
     }
 }
