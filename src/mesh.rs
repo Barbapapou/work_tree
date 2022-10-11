@@ -1,4 +1,5 @@
-use web_sys::{WebGlBuffer, WebGlProgram, WebGlRenderingContext};
+use web_sys::{WebGlBuffer, WebGlRenderingContext};
+use crate::material::Material;
 
 struct VertexBufferObject {
     position: WebGlBuffer,
@@ -13,7 +14,8 @@ pub struct Mesh {
 }
 
 impl Mesh {
-    pub fn bind(&self, gl: &WebGlRenderingContext, shader: &WebGlProgram) {
+    pub fn bind(&self, gl: &WebGlRenderingContext, material: &Material) {
+        let shader = &material.shader;
         // Position
         // get the location of the aVertexPosition shader param
         let attrib_vertex_position = gl.get_attrib_location(shader, "aVertexPosition") as u32;

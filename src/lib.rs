@@ -1,11 +1,13 @@
 extern crate core;
 
-mod entity;
+mod primitive;
 mod mesh;
 mod text;
+mod drawable;
+mod material;
 
-use crate::entity::Entity;
-use crate::text::Text;
+use std::borrow::Borrow;
+use crate::primitive::Primitive;
 use crate::MouseState::{Down, Drag, Up};
 use crate::ZoomState::{Idle, In, Out};
 use gloo::render::{request_animation_frame, AnimationFrame};
@@ -17,6 +19,8 @@ use web_sys::{
     Document, HtmlCanvasElement, HtmlImageElement, MouseEvent, WebGlProgram, WebGlRenderingContext,
     WebGlShader, WebGlTexture, WheelEvent, Window,
 };
+use crate::drawable::Drawable;
+use crate::material::Material;
 
 #[macro_export]
 macro_rules! debug_web_number {
@@ -77,11 +81,9 @@ enum ZoomState {
     Idle,
 }
 
-struct Renderer {
+pub struct Renderer {
     gl: WebGlRenderingContext,
-    shader: WebGlProgram,
     animation_handler: AnimationFrame,
-    texture: WebGlTexture,
     last_update: i32,
     display_width: i32,
     display_height: i32,
@@ -91,9 +93,10 @@ struct Renderer {
     z_far: f32,
     camera_pos: Vector3<f32>,
     projection_matrix: Orthographic3<f32>,
+    model_view_matrix: Matrix4<f32>,
     zoom: f32,
     zoom_state: ZoomState,
-    entities: Vec<Entity>,
+    entities: Vec<Primitive>,
     last_mouse_position: Vector2<f32>,
     current_mouse_position: Vector2<f32>,
     mouse_down_init_position: Vector2<f32>,
@@ -161,8 +164,8 @@ pub fn run() {
     let fragment_shader_source = include_str!("fs.glsl");
     let shader_program = init_shader_program(&gl, vertex_shader_source, fragment_shader_source)
         .expect("failed to create shader program");
-
     let texture = load_texture(&gl, "http://localhost:8000/texture/rust_logo.png");
+    let material = Material::new(shader_program, texture);
 
     gl.clear_color(0.0, 0.0, 0.0, 1.0);
     gl.clear_depth(1.0);
@@ -171,20 +174,19 @@ pub fn run() {
     gl.enable(WebGlRenderingContext::CULL_FACE);
     gl.pixel_storei(WebGlRenderingContext::UNPACK_FLIP_Y_WEBGL, 1);
 
-    let mut entities: Vec<Entity> = Vec::new();
+    let mut entities: Vec<Primitive> = Vec::new();
     let factor = 3.464_101_6;
     for x in -6..7 {
         for y in -0..1 {
-            let mut cube = Entity::new_quad(&gl);
-            cube.position = Vector3::new(x as f32 * factor, y as f32 * factor, 0.0);
-            entities.push(cube);
+            let mut quad = Primitive::new_quad(&gl, material.clone());
+            quad.position = Vector3::new(x as f32 * factor, y as f32 * factor, 0.0);
+            entities.push(quad);
         }
     }
 
     unsafe {
         RENDERER = Some(Renderer {
             gl,
-            shader: shader_program,
             animation_handler: request_animation_frame(update),
             last_update: 0,
             display_width: canvas.client_width(),
@@ -195,9 +197,9 @@ pub fn run() {
             z_far: 100.0,
             camera_pos: Vector3::new(0.0, 0.0, 10.0),
             projection_matrix: Orthographic3::from_fov(1.0, 1.0, 0.0, 1.0), // dummy projection
+            model_view_matrix: Matrix4::identity(), // another dummy
             zoom: 1.0,
             zoom_state: Idle,
-            texture,
             entities,
             last_mouse_position: Vector2::new(0.0, 0.0),
             current_mouse_position: Vector2::new(0.0, 0.0),
@@ -301,39 +303,12 @@ fn draw_scene(renderer: &mut Renderer) {
         renderer.z_near,
         renderer.z_far,
     );
-    let model_view_matrix = (Matrix4::new_translation(&renderer.camera_pos))
+    renderer.model_view_matrix = (Matrix4::new_translation(&renderer.camera_pos))
         .try_inverse()
         .unwrap();
 
-    gl.use_program(Some(&renderer.shader));
-
-    gl.uniform_matrix4fv_with_f32_array(
-        Some(
-            &gl.get_uniform_location(&renderer.shader, "uProjectionMatrix")
-                .expect("can't get projection matrix location"),
-        ),
-        false,
-        renderer.projection_matrix.as_matrix().as_slice(),
-    );
-
-    gl.uniform_matrix4fv_with_f32_array(
-        Some(
-            &gl.get_uniform_location(&renderer.shader, "uModelViewMatrix")
-                .expect("can't get model view matrix location"),
-        ),
-        false,
-        model_view_matrix.as_slice(),
-    );
-
-    gl.active_texture(WebGlRenderingContext::TEXTURE0);
-    gl.bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&renderer.texture));
-    let u_sampler_location = gl
-        .get_uniform_location(&renderer.shader, "uSampler")
-        .expect("can't get uSampler location");
-    gl.uniform1i(Some(&u_sampler_location), 0);
-
     for entity in renderer.entities.as_slice() {
-        entity.draw(&renderer.gl, &renderer.shader);
+        entity.draw(&renderer);
     }
 }
 
