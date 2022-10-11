@@ -29,27 +29,10 @@ impl Drawable for Primitive {
 impl Primitive {
     fn bind(&self, renderer: &Renderer) {
         let gl = &renderer.gl;
-        let shader = &self.material.shader;
+        self.material.bind(renderer);
         self.mesh.bind(gl, &self.material);
-        self.material.bind(gl);
 
-        gl.uniform_matrix4fv_with_f32_array(
-            Some(
-                &gl.get_uniform_location(shader, "uProjectionMatrix")
-                    .expect("can't get projection matrix location"),
-            ),
-            false,
-            renderer.projection_matrix.as_matrix().as_slice(),
-        );
-
-        gl.uniform_matrix4fv_with_f32_array(
-            Some(
-                &gl.get_uniform_location(shader, "uModelViewMatrix")
-                    .expect("can't get model view matrix location"),
-            ),
-            false,
-            renderer.model_view_matrix.as_slice(),
-        );
+        let shader = &self.material.shader;
 
         // add transformation uniform
         let transformation_matrix = Matrix4::new_translation(&self.position)
@@ -96,6 +79,16 @@ impl Primitive {
             rotation: Vector3::new(0.0, 0.0, 0.0),
             scale: Vector3::new(1.0, 1.0, 1.0),
             mesh: Mesh::cube(gl),
+            material
+        }
+    }
+
+    pub fn new_text(gl: &WebGlRenderingContext, material: Material, input_text: &str) -> Primitive {
+        Primitive {
+            position: Vector3::new(0.0, 0.0, 0.0),
+            rotation: Vector3::new(0.0, 0.0, 0.0),
+            scale: Vector3::new(1.0, 1.0, 1.0),
+            mesh: Mesh::text(gl, input_text),
             material
         }
     }

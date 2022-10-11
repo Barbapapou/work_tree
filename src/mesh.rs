@@ -325,4 +325,109 @@ impl Mesh {
             vertex_count: 36,
         }
     }
+
+    pub fn text(gl: &WebGlRenderingContext, input: &str) -> Mesh {
+        let mut vertices: Vec<f32> = Vec::new();
+        let mut uvs: Vec<f32> = Vec::new();
+        let mut normals: Vec<f32> = Vec::new();
+        let mut indices: Vec<u16> = Vec::new();
+
+        let mut vertex_count = 0;
+        let mut index_count: u16 = 0;
+        for (i, char) in input.chars().enumerate() {
+            if char == ' ' {
+                continue;
+            }
+            let if32 = i as f32 * 2.0;
+            #[rustfmt::skip]
+                let vertices_t = [
+                -1.0 + if32, -1.0, 0.0,
+                1.0 + if32, -1.0, 0.0,
+                1.0 + if32, 1.0, 0.0,
+                -1.0 + if32, 1.0, 0.0];
+            vertices.extend_from_slice(&vertices_t);
+            #[rustfmt::skip]
+                let uvs_t = [
+                0.0, 0.0,
+                1.0, 0.0,
+                1.0, 1.0,
+                0.0, 1.0,
+            ];
+            uvs.extend_from_slice(&uvs_t);
+            #[rustfmt::skip]
+                let normals_t = [
+                0.0, 0.0, 1.0,
+                0.0, 0.0, 1.0,
+                0.0, 0.0, 1.0,
+                0.0, 0.0, 1.0
+            ];
+            normals.extend_from_slice(&normals_t);
+            let indices_t = [
+                index_count, 1 + index_count, 2 + index_count,
+                index_count, 2 + index_count, 3 + index_count
+            ];
+            indices.extend_from_slice(&indices_t);
+            index_count += 4;
+            vertex_count += 6;
+        }
+
+        let position_buffer = gl.create_buffer().expect("failed to create buffer");
+        gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&position_buffer));
+        unsafe {
+            let vertices = js_sys::Float32Array::view(&vertices);
+            gl.buffer_data_with_array_buffer_view(
+                WebGlRenderingContext::ARRAY_BUFFER,
+                &(vertices),
+                WebGlRenderingContext::STATIC_DRAW,
+            );
+        }
+
+        let uv_buffer = gl.create_buffer().expect("failed to create buffer");
+        gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&uv_buffer));
+        unsafe {
+            let uvs = js_sys::Float32Array::view(&uvs);
+            gl.buffer_data_with_array_buffer_view(
+                WebGlRenderingContext::ARRAY_BUFFER,
+                &(uvs),
+                WebGlRenderingContext::STATIC_DRAW,
+            );
+        }
+
+        let normal_buffer = gl.create_buffer().expect("failed to create buffer");
+        gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&normal_buffer));
+        unsafe {
+            let normals = js_sys::Float32Array::view(&normals);
+            gl.buffer_data_with_array_buffer_view(
+                WebGlRenderingContext::ARRAY_BUFFER,
+                &(normals),
+                WebGlRenderingContext::STATIC_DRAW,
+            );
+        }
+
+        let index_buffer = gl.create_buffer().expect("failed to create buffer");
+        gl.bind_buffer(
+            WebGlRenderingContext::ELEMENT_ARRAY_BUFFER,
+            Some(&index_buffer),
+        );
+        unsafe {
+            let indices = js_sys::Uint16Array::view(&indices);
+            gl.buffer_data_with_array_buffer_view(
+                WebGlRenderingContext::ELEMENT_ARRAY_BUFFER,
+                &(indices),
+                WebGlRenderingContext::STATIC_DRAW,
+            );
+        }
+
+        let vbo = VertexBufferObject {
+            position: position_buffer,
+            uv: uv_buffer,
+            normal: normal_buffer,
+            indices: index_buffer,
+        };
+
+        Mesh {
+            vbo,
+            vertex_count,
+        }
+    }
 }

@@ -175,14 +175,16 @@ pub fn run() {
     gl.pixel_storei(WebGlRenderingContext::UNPACK_FLIP_Y_WEBGL, 1);
 
     let mut entities: Vec<Primitive> = Vec::new();
-    let factor = 3.464_101_6;
-    for x in -6..7 {
-        for y in -0..1 {
-            let mut quad = Primitive::new_quad(&gl, material.clone());
-            quad.position = Vector3::new(x as f32 * factor, y as f32 * factor, 0.0);
-            entities.push(quad);
-        }
-    }
+    // let factor = 3.464_101_6;
+    // for x in -6..7 {
+    //     for y in -0..1 {
+    //         let mut quad = Primitive::new_quad(&gl, material.clone());
+    //         quad.position = Vector3::new(x as f32 * factor, y as f32 * factor, 0.0);
+    //         entities.push(quad);
+    //     }
+    // }
+
+    entities.push(Primitive::new_text(&gl, material, "Salut la team"));
 
     unsafe {
         RENDERER = Some(Renderer {
