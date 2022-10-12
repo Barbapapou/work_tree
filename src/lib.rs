@@ -1,12 +1,12 @@
 extern crate core;
 
-mod primitive;
-mod mesh;
-mod text;
 mod drawable;
 mod material;
+mod mesh;
+mod primitive;
 
-use std::borrow::Borrow;
+use crate::drawable::Drawable;
+use crate::material::Material;
 use crate::primitive::Primitive;
 use crate::MouseState::{Down, Drag, Up};
 use crate::ZoomState::{Idle, In, Out};
@@ -19,8 +19,6 @@ use web_sys::{
     Document, HtmlCanvasElement, HtmlImageElement, MouseEvent, WebGlProgram, WebGlRenderingContext,
     WebGlShader, WebGlTexture, WheelEvent, Window,
 };
-use crate::drawable::Drawable;
-use crate::material::Material;
 
 #[macro_export]
 macro_rules! debug_web_number {
@@ -199,16 +197,16 @@ pub fn run() {
             z_far: 100.0,
             camera_pos: Vector3::new(0.0, 0.0, 10.0),
             projection_matrix: Orthographic3::from_fov(1.0, 1.0, 0.0, 1.0), // dummy projection
-            model_view_matrix: Matrix4::identity(), // another dummy
+            model_view_matrix: Default::default(),
             zoom: 1.0,
-            zoom_state: Idle,
+            zoom_state: ZoomState::Idle,
             entities,
-            last_mouse_position: Vector2::new(0.0, 0.0),
-            current_mouse_position: Vector2::new(0.0, 0.0),
-            mouse_down_init_position: Vector2::new(0.0, 0.0),
-            mouse_drag_init_world_position: Vector3::new(0.0, 0.0, 0.0),
-            mouse_state: Up,
-            sample_delta: Vec::new(),
+            last_mouse_position: Default::default(),
+            current_mouse_position: Default::default(),
+            mouse_down_init_position: Default::default(),
+            mouse_drag_init_world_position: Default::default(),
+            mouse_state: MouseState::Up,
+            sample_delta: vec![],
         })
     }
 }
